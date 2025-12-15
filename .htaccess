@@ -1,0 +1,43 @@
+# Apache configuration for Barcode Scanner
+# Enable URL rewriting for cleaner API routes
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /
+
+    # Redirect /api/products to /api/products.php
+    RewriteRule ^api/products$ api/products.php [L,QSA]
+    RewriteRule ^api/products/(.*)$ api/products.php/$1 [L,QSA]
+    
+    # Redirect /api/auth to /api/auth.php
+    RewriteRule ^api/auth$ api/auth.php [L,QSA]
+    RewriteRule ^api/auth/(.*)$ api/auth.php/$1 [L,QSA]
+    
+    # Redirect /api/uploads to /api/upload.php
+    RewriteRule ^api/uploads$ api/upload.php [L,QSA]
+    
+    # Admin routes
+    RewriteRule ^admin/login$ api/auth.php/login [L,QSA]
+    RewriteRule ^admin/logout$ api/auth.php/logout [L,QSA]
+    RewriteRule ^admin/status$ api/auth.php/status [L,QSA]
+    RewriteRule ^admin/csrf-token$ api/auth.php/csrf-token [L,QSA]
+</IfModule>
+
+# Protect sensitive files
+<FilesMatch "^\.">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Prevent directory listing
+Options -Indexes
+
+# Set default charset
+AddDefaultCharset UTF-8
+
+# PHP settings
+<IfModule mod_php.c>
+    php_value upload_max_filesize 10M
+    php_value post_max_size 10M
+    php_value max_execution_time 30
+</IfModule>
