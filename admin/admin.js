@@ -182,7 +182,7 @@ function resetForm() {
   document.getElementById('preview').innerHTML = '';
   _capturedImageData = null;
   
-  ['addBarcode', 'addName', 'addPrice', 'addImage'].forEach(clearFieldError);
+  ['addBarcode', 'addName', 'addCategory', 'addPrice', 'addImage'].forEach(clearFieldError);
 }
 
 // Show image preview
@@ -282,11 +282,12 @@ document.getElementById('addForm').addEventListener('submit', async (e) => {
   const id = document.getElementById('editingId').value;
   const barcode = document.getElementById('addBarcode').value.trim();
   const name = document.getElementById('addName').value.trim();
+  const categoryId = document.getElementById('addCategory').value;
   const price = document.getElementById('addPrice').value.trim();
   let image = document.getElementById('addImage').value.trim();
   
   // Clear previous errors
-  ['addBarcode', 'addName', 'addPrice', 'addImage'].forEach(clearFieldError);
+  ['addBarcode', 'addName', 'addCategory', 'addPrice', 'addImage'].forEach(clearFieldError);
   
   // Validation
   let hasError = false;
@@ -296,8 +297,8 @@ document.getElementById('addForm').addEventListener('submit', async (e) => {
     hasError = true;
   }
   
-  // Check duplicate barcode
-  const dup = _productsCache.find(p => p.barcode === barcode && (!id || p.id !== id));
+  // Check duplicate barcode (exclude current product when editing)
+  const dup = _productsCache.find(p => p.barcode === barcode && (!id || String(p.id) !== String(id)));
   if (dup) {
     showFieldError('addBarcode', 'Barcode đã tồn tại');
     hasError = true;
@@ -315,8 +316,8 @@ document.getElementById('addForm').addEventListener('submit', async (e) => {
   
   if (hasError) return;
   
-  // Handle image upload
-  if (_capturedImageData && image.startsWith('Đã chụp')) {
+  // Handle image upload (from camera capture or file upload)
+  if (_capturedImageData && (image.startsWith('Đã chụp') || image.startsWith('Đã chọn'))) {
     image = _capturedImageData;
   }
   
@@ -325,6 +326,7 @@ document.getElementById('addForm').addEventListener('submit', async (e) => {
       image = await uploadDataUrl(image);
     }
   } catch (err) {
+    console.error('Upload error:', err);
     showFieldError('addImage', 'Không thể upload ảnh');
     return;
   }
@@ -332,6 +334,7 @@ document.getElementById('addForm').addEventListener('submit', async (e) => {
   const token = await getCSRFToken();
   const payload = { barcode, name, image };
   if (price) payload.price = price;
+  if (categoryId) payload.category_id = categoryId;
   
   try {
     let r;
@@ -375,6 +378,7 @@ document.getElementById('addForm').addEventListener('submit', async (e) => {
       showToast(j.error || 'Có lỗi xảy ra', 4000, 'error');
     }
   } catch (err) {
+    console.error('Network/API error:', err);
     showToast('Lỗi mạng', 4000, 'error');
   }
 });
@@ -411,6 +415,7 @@ document.getElementById('productsTable').addEventListener('click', async (e) => 
     const p = await r.json();
     document.getElementById('addBarcode').value = p.barcode || '';
     document.getElementById('addName').value = p.name || '';
+    document.getElementById('addCategory').value = p.category_id || '';
     document.getElementById('addPrice').value = p.price || '';
     document.getElementById('addImage').value = p.image || '';
     document.getElementById('editingId').value = p.id;
@@ -622,6 +627,137 @@ document.getElementById('miniStop')?.addEventListener('click', () => {
   if (miniCap) miniCap.style.display = 'none';
 });
 
+// Categories management
+let _categoriesCache = [];
+
+// Load categories
+async function loadCategories() {
+  try {
+    const r = await fetch('../api/categories.php');
+    const categories = await r.json();
+    _categoriesCache = categories;
+    renderCategories();
+    populateCategoryDropdown();
+  } catch (error) {
+    console.error('Error loading categories:', error);
+  }
+}
+
+// Render categories list
+function renderCategories() {
+  const list = document.getElementById('categoriesList');
+  if (!list) return;
+
+  list.innerHTML = _categoriesCache.map(cat => `
+    <div class="category-item">
+      <span class="category-name">${cat.type}</span>
+      <div class="category-actions">
+        <button class="edit-btn" onclick="editCategory(${cat.id}, '${cat.type}')">Sửa</button>
+        <button class="delete-btn" onclick="deleteCategory(${cat.id})">Xóa</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+// Populate category dropdown
+function populateCategoryDropdown() {
+  const select = document.getElementById('addCategory');
+  if (!select) return;
+
+  select.innerHTML = '<option value="">Chọn loại...</option>';
+  _categoriesCache.forEach(cat => {
+    select.innerHTML += `<option value="${cat.id}">${cat.type}</option>`;
+  });
+}
+
+// Add category
+async function addCategory() {
+  const input = document.getElementById('categoryName');
+  const name = input.value.trim();
+  if (!name) {
+    showToast('Vui lòng nhập loại danh mục', 'error');
+    return;
+  }
+
+  try {
+    const r = await fetch('../api/categories.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: name })
+    });
+
+    const result = await r.json();
+    if (result.success) {
+      input.value = '';
+      await loadCategories();
+      showToast('Đã thêm loại danh mục', 'success');
+    } else {
+      showToast(result.error || 'Không thể thêm loại danh mục', 'error');
+    }
+  } catch (error) {
+    console.error('Error adding category:', error);
+    showToast('Lỗi khi thêm loại danh mục', 'error');
+  }
+}
+
+// Edit category
+function editCategory(id, currentType) {
+  const newType = prompt('Nhập loại mới cho danh mục:', currentType);
+  if (!newType || newType.trim() === currentType) return;
+
+  updateCategory(id, newType.trim());
+}
+
+// Update category
+async function updateCategory(id, type) {
+  try {
+    const r = await fetch('../api/categories.php', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, type })
+    });
+
+    const result = await r.json();
+    if (result.success) {
+      await loadCategories();
+      showToast('Đã cập nhật loại danh mục', 'success');
+    } else {
+      showToast(result.error || 'Không thể cập nhật loại danh mục', 'error');
+    }
+  } catch (error) {
+    console.error('Error updating category:', error);
+    showToast('Lỗi khi cập nhật loại danh mục', 'error');
+  }
+}
+
+// Delete category
+async function deleteCategory(id) {
+  if (!confirm('Bạn có chắc muốn xóa loại danh mục này?')) return;
+
+  try {
+    const r = await fetch(`../api/categories.php?id=${id}`, {
+      method: 'DELETE'
+    });
+
+    const result = await r.json();
+    if (result.success) {
+      await loadCategories();
+      showToast('Đã xóa loại danh mục', 'success');
+    } else {
+      showToast(result.error || 'Không thể xóa loại danh mục', 'error');
+    }
+  } catch (error) {
+    console.error('Error deleting category:', error);
+    showToast('Lỗi khi xóa loại danh mục', 'error');
+  }
+}
+
+// Event listeners for categories
+document.getElementById('addCategoryBtn')?.addEventListener('click', addCategory);
+document.getElementById('categoryName')?.addEventListener('keypress', (e) => {
+  if (e.key === 'Enter') addCategory();
+});
+
 // Initialize - check auth status
 (async () => {
   const status = await checkAuth();
@@ -629,5 +765,6 @@ document.getElementById('miniStop')?.addEventListener('click', () => {
     document.getElementById('auth').style.display = 'none';
     document.getElementById('adminPanel').style.display = 'block';
     await loadProducts();
+    await loadCategories();
   }
 })();
