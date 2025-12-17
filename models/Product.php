@@ -14,8 +14,19 @@ class Product {
     }
 
     // Get all products
-    public function getAll() {
-        $stmt = $this->db->query("SELECT * FROM products ORDER BY updated_at DESC, created_at DESC");
+    public function getAll($categoryId = null) {
+        $sql = "SELECT p.*, c.type as category_type 
+                FROM products p 
+                LEFT JOIN categories c ON p.category_id = c.id";
+        
+        if ($categoryId) {
+            $sql .= " WHERE p.category_id = ?";
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute([$categoryId]);
+        } else {
+            $stmt = $this->db->query($sql);
+        }
+        
         return $stmt->fetchAll();
     }
 
@@ -28,25 +39,30 @@ class Product {
 
     // Get product by barcode
     public function getByBarcode($barcode) {
-        $stmt = $this->db->prepare("SELECT * FROM products WHERE barcode = ?");
+        $stmt = $this->db->prepare("
+            SELECT p.*, c.type as category_type 
+            FROM products p 
+            LEFT JOIN categories c ON p.category_id = c.id 
+            WHERE p.barcode = ?
+        ");
         $stmt->execute([$barcode]);
         return $stmt->fetch();
     }
 
     // Create new product
     public function create($data) {
-        $id = generateId('prod-');
         $stmt = $this->db->prepare("
-            INSERT INTO products (id, barcode, name, price, image) 
+            INSERT INTO products (barcode, name, price, image, category_id) 
             VALUES (?, ?, ?, ?, ?)
         ");
         $stmt->execute([
-            $id,
             $data['barcode'],
             $data['name'],
             $data['price'] ?? null,
-            $data['image'] ?? null
+            $data['image'] ?? null,
+            $data['category_id'] ?? null
         ]);
+        $id = $this->db->lastInsertId();
         return $this->getById($id);
     }
 
@@ -70,6 +86,10 @@ class Product {
         if (array_key_exists('image', $data)) {
             $fields[] = 'image = ?';
             $values[] = $data['image'];
+        }
+        if (array_key_exists('category_id', $data)) {
+            $fields[] = 'category_id = ?';
+            $values[] = $data['category_id'];
         }
 
         if (empty($fields)) {

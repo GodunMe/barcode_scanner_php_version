@@ -4,46 +4,6 @@
 - Laragon (hoặc XAMPP/WAMP với PHP 7.4+ và MySQL)
 - PHP 7.4 trở lên với extension PDO MySQL
 
-## Cài đặt
-
-### 1. Copy thư mục vào Laragon
-Copy toàn bộ thư mục `php_version` vào thư mục `www` của Laragon:
-```
-C:\laragon\www\barcode_scanner\
-```
-
-### 2. Tạo Database
-1. Mở phpMyAdmin (http://localhost/phpmyadmin)
-2. Chạy file SQL: `config/setup.sql`
-
-Hoặc chạy từ terminal:
-```bash
-mysql -u root < config/setup.sql
-```
-
-### 3. Cấu hình Database
-Nếu cần, chỉnh sửa file `config/database.php`:
-```php
-define('DB_HOST', 'localhost');
-define('DB_NAME', 'barcode_scanner');
-define('DB_USER', 'root');
-define('DB_PASS', ''); // Mật khẩu MySQL nếu có
-```
-
-### 4. Tạo thư mục uploads
-```bash
-mkdir uploads
-chmod 755 uploads
-```
-
-### 5. Truy cập ứng dụng
-- Trang chính: http://localhost/barcode_scanner/
-- Trang admin: http://localhost/barcode_scanner/admin/
-
-### 6. Đăng nhập Admin
-- Username: `admin`
-- Password: `admin123`
-
 ## Cấu trúc thư mục
 ```
 php_version/
@@ -80,19 +40,5 @@ php_version/
 - ✅ Xác thực admin với session
 - ✅ Bảo vệ CSRF
 - ✅ Responsive design
-
-## Đổi mật khẩu Admin
-Để đổi mật khẩu admin, chạy script sau hoặc update trực tiếp trong database:
-
-```php
-<?php
-$newPassword = 'your_new_password';
-$hash = password_hash($newPassword, PASSWORD_BCRYPT);
-echo $hash;
-// Copy hash này vào database
-```
-
-Hoặc SQL:
-```sql
-UPDATE users SET password_hash = '$2y$10$...' WHERE username = 'admin';
-```
+- ✅ Phân loại sản phẩm theo type
+- ✅ Tìm kiếm theo type

@@ -369,6 +369,9 @@
     .products-table .product-name {
       font-weight: 500;
       max-width: 200px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     .products-table .edit,
@@ -516,6 +519,10 @@
     .categories-list {
       display: grid;
       gap: 8px;
+      max-height: 360px; /* limit height and enable scrolling when long */
+      overflow-y: auto;
+      padding-right: 6px; /* give room for scrollbar */
+      scroll-behavior: smooth;
     }
 
     .category-item {
@@ -530,6 +537,22 @@
 
     .category-item .category-name {
       font-weight: 500;
+      cursor: pointer;
+      flex: 1;
+    }
+
+    .category-item .category-name:hover {
+      color: var(--primary);
+    }
+
+    .category-edit-input {
+      flex: 1;
+      padding: 8px 12px;
+      border: 2px solid var(--primary);
+      border-radius: 8px;
+      font-size: 0.9rem;
+      font-weight: 500;
+      outline: none;
     }
 
     .category-item .category-actions {
@@ -538,7 +561,9 @@
     }
 
     .category-item .edit-btn,
-    .category-item .delete-btn {
+    .category-item .delete-btn,
+    .category-item .save-btn,
+    .category-item .cancel-btn {
       padding: 6px 12px;
       border: none;
       border-radius: 8px;
@@ -565,6 +590,30 @@
       background: #fecaca;
     }
 
+    .category-item .save-btn {
+      background: #d1fae5;
+      color: #065f46;
+    }
+
+    .category-item .save-btn:hover {
+      background: #a7f3d0;
+    }
+
+    .category-item .cancel-btn {
+      background: #f3f4f6;
+      color: #374151;
+    }
+
+    .category-item .cancel-btn:hover {
+      background: #e5e7eb;
+    }
+
+    /* Scrollbar styling for categories list */
+    .categories-list::-webkit-scrollbar { width: 10px; }
+    .categories-list::-webkit-scrollbar-track { background: transparent; }
+    .categories-list::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.08); border-radius: 8px; }
+    .categories-list::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.12); }
+
     /* Mini Camera */
     .mini-camera {
       margin-bottom: 16px;
@@ -585,6 +634,11 @@
       background: #1e293b;
     }
 
+    /* Mobile Products (hidden by default) */
+    .mobile-products {
+      display: none;
+    }
+
     /* Responsive */
     @media (max-width: 600px) {
       .admin-header {
@@ -601,6 +655,132 @@
       .products-table td:nth-child(2) {
         display: none;
       }
+
+      /* Mobile Product Cards */
+      .table-responsive {
+        display: none;
+      }
+
+      .mobile-products {
+        display: block;
+      }
+
+      .product-card {
+        background: var(--card-bg);
+        border-radius: 12px;
+        padding: 16px;
+        margin-bottom: 12px;
+        border: 1px solid var(--border);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .product-card-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .product-card-row-1 {
+        /* Hình ảnh + Tên sản phẩm */
+      }
+
+      .product-card-row-1 img {
+        width: 50px;
+        height: 50px;
+        object-fit: cover;
+        border-radius: 8px;
+        flex-shrink: 0;
+      }
+
+      .product-card-name {
+        font-weight: 600;
+        font-size: 1rem;
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .product-card-row-2 {
+        /* Barcode + Danh mục */
+        justify-content: space-between;
+      }
+
+      .product-info-item {
+        flex: 1;
+        text-align: center;
+        background: #f8fafc;
+        padding: 8px 12px;
+        border-radius: 8px;
+        border: 1px solid #e2e8f0;
+      }
+
+      .product-info-label {
+        font-weight: 600;
+        color: var(--text-muted);
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 4px;
+        display: block;
+      }
+
+      .product-info-value {
+        color: var(--text);
+        font-weight: 500;
+        font-size: 0.85rem;
+      }
+
+      .product-card-row-3 {
+        /* Giá tiền */
+        justify-content: center;
+      }
+
+      .product-price-block {
+        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        color: white;
+        padding: 10px 20px;
+        border-radius: 8px;
+        font-weight: 600;
+        font-size: 1rem;
+        text-align: center;
+        width: 100%;
+        max-width: 200px;
+      }
+
+      .product-card-actions {
+        display: flex;
+        gap: 8px;
+        justify-content: center;
+      }
+
+      .product-card .edit,
+      .product-card .del {
+        flex: 1;
+        max-width: 120px;
+        padding: 8px 12px;
+        border: none;
+        border-radius: 8px;
+        font-size: 0.85rem;
+        font-weight: 500;
+        cursor: pointer;
+      }
+
+      .product-card .edit {
+        background: #dbeafe;
+        color: #2563eb;
+      }
+
+      .product-card .del {
+        background: #fee2e2;
+        color: #dc2626;
+      }
+
+      .product-card .edit:hover { background: #bfdbfe; }
+      .product-card .del:hover { background: #fecaca; }
     }
   </style>
 </head>
@@ -620,7 +800,15 @@
         </div>
         <div class="form-group">
           <label>Mật khẩu</label>
-          <input type="password" id="password" placeholder="Nhập password" required>
+          <div class="input-with-icon">
+            <input type="password" id="password" placeholder="Nhập password" required>
+            <button type="button" id="togglePassword" class="icon-btn" title="Hiện mật khẩu">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                <circle cx="12" cy="12" r="3"></circle>
+              </svg>
+            </button>
+          </div>
         </div>
         <button type="submit" class="btn btn-primary btn-block">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -654,6 +842,16 @@
           </svg>
           Thêm sản phẩm
         </button>
+        <button id="toggleCategoriesBtn" class="btn btn-secondary">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path>
+            <polyline points="14,2 14,8 20,8"></polyline>
+            <line x1="16" y1="13" x2="8" y2="13"></line>
+            <line x1="16" y1="17" x2="8" y2="17"></line>
+            <polyline points="10,9 9,9 8,9"></polyline>
+          </svg>
+          Quản lý danh mục
+        </button>
         <a href="../" class="btn btn-secondary">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
@@ -673,7 +871,7 @@
     </header>
 
     <!-- Categories Management -->
-    <div class="card">
+    <div id="categoriesCard" class="card collapsible">
       <h4>📂 Quản lý danh mục</h4>
       <div class="category-form">
         <input type="text" id="categoryName" placeholder="Loại danh mục mới">
@@ -790,6 +988,7 @@
               <th>Ảnh</th>
               <th>Barcode</th>
               <th>Tên sản phẩm</th>
+              <th>Danh mục</th>
               <th>Giá</th>
               <th>Hành động</th>
             </tr>
@@ -797,6 +996,7 @@
           <tbody></tbody>
         </table>
       </div>
+      <div id="mobileProducts" class="mobile-products"></div>
       <div id="pagination"></div>
     </div>
 

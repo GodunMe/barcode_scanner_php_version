@@ -27,7 +27,8 @@ $param = $pathParts[$productsIndex + 2] ?? null;
 
 // Route: GET /api/products.php - Get all products
 if ($method === 'GET' && !$action) {
-    $products = $product->getAll();
+    $categoryId = $_GET['category'] ?? null;
+    $products = $product->getAll($categoryId);
     jsonResponse($products);
 }
 
@@ -141,6 +142,7 @@ if ($method === 'PUT' && $action) {
     if (!empty($data['name'])) $updates['name'] = sanitize($data['name']);
     if (isset($data['price'])) $updates['price'] = $data['price'] ?: null;
     if (isset($data['image'])) $updates['image'] = $data['image'];
+    if (isset($data['category_id'])) $updates['category_id'] = $data['category_id'] ?: null;
     
     $result = $product->update($id, $updates);
     jsonResponse($result);

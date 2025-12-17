@@ -200,12 +200,19 @@
     .camera-select {
       width: 100%;
       padding: 12px 16px;
+      padding-right: 44px; /* space for caret */
       border: 2px solid var(--border);
       border-radius: 12px;
       font-size: 0.9rem;
       margin-top: 12px;
       background: white;
       cursor: pointer;
+      height: 48px;
+      display: inline-flex;
+      align-items: center;
+      box-sizing: border-box;
+      -webkit-appearance: none;
+      appearance: none;
     }
 
     .camera-select:focus {
@@ -225,29 +232,104 @@
     .mode-toggle label {
       flex: 1;
       text-align: center;
-      cursor: pointer;
-      font-weight: 500;
-      font-size: 0.9rem;
-      transition: all 0.2s;
-    }
 
-    .mode-toggle input { display: none; }
-
-    .mode-toggle input:checked + span {
-      background: white;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-      color: var(--primary);
-    }
-
-    .mode-toggle span {
-      display: block;
-      padding: 12px;
-      border-radius: 10px;
     }
 
     /* Category Filter */
     .category-filter {
       margin-top: 16px;
+    }
+
+    /* Browse filters - mobile friendly layout */
+    .browse-filters {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-top: 0;
+    }
+
+    .filter-selects {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    /* Ensure both filters share same flex sizing and alignment: split 50%/50% */
+    .filter-selects > * {
+      flex: 0 0 calc(50% - 4px);
+      min-width: 0;
+    }
+
+    /* Remove extra top margin for selects inside filter row */
+    .filter-selects .camera-select { margin-top: 0; }
+    
+    /* Custom scrollable dropdown for long category lists */
+    .custom-select-wrapper { position: relative; width: 100%; }
+    .custom-select-toggle {
+      width: 100%;
+      padding: 12px 16px;
+      padding-right: 44px;
+      border: 2px solid var(--border);
+      border-radius: 12px;
+      background: white;
+      text-align: left;
+      cursor: pointer;
+      font-size: 0.9rem;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      box-sizing: border-box;
+      height: 48px;
+    }
+    .custom-select-toggle::after {
+      content: '';
+      position: absolute;
+      right: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 0; height: 0;
+      border-left: 6px solid transparent;
+      border-right: 6px solid transparent;
+      border-top: 6px solid #111;
+      opacity: 0.7;
+      pointer-events: none;
+    }
+    .custom-select-list {
+      position: absolute;
+      left: 0; right: 0;
+      margin-top: 8px;
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      max-height: 220px;
+      overflow-y: auto;
+      z-index: 1200;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+    }
+    .custom-option { padding: 10px 12px; cursor: pointer; }
+    .custom-option:hover { background: #f1f5f9; }
+
+    .filter-actions {
+      display: flex;
+      gap: 8px;
+      width: 100%;
+    }
+
+    .filter-actions .btn {
+      width: 100%;
+      padding: 12px 16px;
+      border-radius: 12px;
+      font-size: 0.95rem;
+      box-sizing: border-box;
+    }
+    }
+
+    /* Make sure selects are full width on very small screens */
+    @media (max-width: 360px) {
+      .filter-selects {
+        flex-direction: column;
+      }
+      .filter-selects > * { flex: 1 1 100%; }
     }
 
     /* Manual Input */
@@ -274,27 +356,7 @@
     .manual-input input::placeholder { color: #94a3b8; }
 
     /* Barcode Display */
-    .barcode-display {
-      text-align: center;
-      padding: 16px;
-      background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
-      border-radius: 12px;
-      margin-top: 16px;
-    }
-
-    .barcode-display label {
-      font-size: 0.85rem;
-      color: var(--text-muted);
-      display: block;
-      margin-bottom: 4px;
-    }
-
-    .barcode-display .barcode-value {
-      font-size: 1.4rem;
-      font-weight: 700;
-      color: var(--primary);
-      font-family: 'Courier New', monospace;
-    }
+    /* Barcode display removed */
 
     /* Product Result */
     .product-result {
@@ -615,6 +677,154 @@
       .card { padding: 16px; border-radius: 20px; }
       .product-card { flex-direction: column; text-align: center; }
     }
+
+    /* Tabs */
+    .tabs {
+      display: flex;
+      background: #f1f5f9;
+      border-radius: 12px;
+      padding: 4px;
+      margin-bottom: 20px;
+      position: relative; /* ensure stacking context */
+      z-index: 1102; /* place above overlays/modals */
+    }
+
+    .tab {
+      flex: 1;
+      text-align: center;
+      cursor: pointer;
+      font-weight: 500;
+      font-size: 0.9rem;
+      transition: all 0.2s;
+      padding: 12px;
+      border-radius: 10px;
+    }
+
+    .tab.active {
+      background: white;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      color: var(--primary);
+    }
+
+    /* Product List */
+    .product-list {
+      display: none;
+      margin-top: 16px;
+    }
+
+    .product-list.show { display: block; }
+
+    .product-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .product-item {
+      background: white;
+      border-radius: 12px;
+      padding: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      cursor: pointer;
+      transition: all 0.2s;
+      text-align: center;
+    }
+
+    .product-item .add-to-cart {
+      display: inline-block;
+      margin-top: 8px;
+      padding: 6px 10px;
+      border-radius: 8px;
+      background: var(--primary);
+      color: white;
+      font-size: 0.85rem;
+      cursor: pointer;
+      border: none;
+    }
+
+    .pagination {
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+      margin-top: 14px;
+      align-items: center;
+    }
+
+    .pagination button {
+      padding: 8px 12px;
+      border-radius: 8px;
+      border: 1px solid rgba(0,0,0,0.06);
+      background: white;
+      cursor: pointer;
+    }
+
+    .pagination button.active {
+      background: var(--primary);
+      color: white;
+      border-color: rgba(0,0,0,0.08);
+    }
+
+    .browse-cart-preview {
+      background: rgba(255,255,255,0.9);
+      border-radius: 12px;
+      padding: 12px;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.06);
+      font-size: 0.95rem;
+      color: var(--text);
+    }
+
+    .browse-cart-preview .item { display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px dashed rgba(0,0,0,0.04);} 
+    .browse-cart-preview .item:last-child { border-bottom: none; }
+
+    .product-item:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+    }
+
+    .product-item-image {
+      width: 100%;
+      height: 80px;
+      border-radius: 8px;
+      object-fit: cover;
+      background: #f1f5f9;
+      margin-bottom: 8px;
+    }
+
+    .product-item-name {
+      font-size: 0.8rem;
+      font-weight: 500;
+      margin-bottom: 4px;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .product-item-price {
+      font-size: 0.75rem;
+      color: var(--primary);
+      font-weight: 600;
+    }
+
+    /* Product grid and items styling (restored to normal) */
+    #productGrid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .product-item {
+      background: white;
+      border-radius: 12px;
+      padding: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      cursor: pointer;
+      transition: all 0.2s;
+      text-align: center;
+      margin: 8px;
+    }
   </style>
 </head>
 <body>
@@ -625,6 +835,14 @@
       <h1>Quét mã vạch</h1>
     </header>
 
+    <!-- Tabs -->
+    <div class="tabs">
+      <div class="tab active" data-tab="scan">📷 Quét mã</div>
+      <div class="tab" data-tab="browse">🛍️ Duyệt sản phẩm</div>
+    </div>
+
+    <!-- Scan Tab -->
+    <div class="tab-content" id="scanTab">
     <!-- Main Card -->
     <div class="card">
       <!-- Scanner -->
@@ -675,12 +893,7 @@
         </label>
       </div>
 
-      <!-- Category Filter -->
-      <div class="category-filter">
-        <select id="categoryFilter" class="camera-select">
-          <option value="">Tất cả loại</option>
-        </select>
-      </div>
+      
 
       <!-- Manual Input -->
       <div class="manual-input">
@@ -693,11 +906,7 @@
         </button>
       </div>
 
-      <!-- Barcode Display -->
-      <div class="barcode-display">
-        <label>Mã vạch</label>
-        <div class="barcode-value" id="barcodeValue">---</div>
-      </div>
+      <!-- Barcode display removed -->
 
       <!-- Product Result -->
       <div class="product-result" id="product">
@@ -723,9 +932,50 @@
         </div>
       </div>
     </div>
+    </div> <!-- Close scanTab -->
+
+    <!-- Browse Tab -->
+    <div class="tab-content" id="browseTab" style="display: none; position: relative;">
+        <div class="card">
+        <h3 style="margin-bottom: 16px; color: var(--text);">🛍️ Duyệt sản phẩm</h3>
+
+        <!-- Filters -->
+        <div class="browse-filters">
+          <div class="filter-selects">
+            <select id="browseCategoryFilter" class="camera-select" style="flex: 1; min-width: 0;">
+              <option value="">📂 Tất cả loại</option>
+            </select>
+
+            <select id="browsePriceFilter" class="camera-select" style="flex: 1; min-width: 0;">
+              <option value="">💰 Tất cả giá</option>
+              <option value="0-100000">💰 Dưới 100.000₫</option>
+              <option value="100000-200000">💰 100.000₫ - 200.000₫</option>
+              <option value="200000-300000">💰 200.000₫ - 300.000₫</option>
+              <option value="300000-400000">💰 300.000₫ - 400.000₫</option>
+              <option value="400000+">💰 Trên 400.000₫</option>
+            </select>
+          </div>
+
+          <div class="filter-actions">
+            <button id="refreshProducts" class="btn btn-primary" style="flex: 1;">
+              🔄 Làm mới
+            </button>
+          </div>
+        </div>
+
+        <!-- Product List -->
+        <div class="product-list show" id="productList">
+          <div class="product-grid" id="productGrid">
+            <!-- Products will be populated here -->
+          </div>
+            <div id="productPagination" class="pagination" aria-label="Pagination"></div>
+            <!-- Browse cart preview removed -->
+        </div>
+      </div>
+    </div>
 
     <!-- Cart Section -->
-    <div class="card cart-section" id="cartArea">
+    <div class="card cart-section show" id="cartArea">
       <div class="cart-header">
         <h3>🛒 Giỏ hàng <span class="cart-count" id="cartCount">0</span></h3>
         <button id="clearCart" class="btn btn-secondary" style="padding: 8px 12px; font-size: 0.85rem;">

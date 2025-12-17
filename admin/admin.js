@@ -10,9 +10,10 @@ let _capturedImageData = null;
 
 // API base paths (adjusted for PHP)
 const API = {
-  products: '/api/products.php',
-  auth: '/api/auth.php',
-  upload: '/api/upload.php'
+  products: '../api/products.php',
+  categories: '../api/categories.php',
+  auth: '../api/auth.php',
+  upload: '../api/upload.php'
 };
 
 // Check authentication status
@@ -31,34 +32,49 @@ async function getCSRFToken() {
 
 // Load products
 async function loadProducts() {
-  const r = await fetch(API.products);
-  const data = await r.json();
-  _productsCache = data;
-  renderProducts();
+  try {
+    console.log('Admin: Loading products from', API.products);
+    const r = await fetch(API.products);
+    const data = await r.json();
+    console.log('Admin: Loaded products:', data.slice(0, 2)); // Show first 2 products
+    _productsCache = data;
+    renderProducts();
+  } catch (error) {
+    console.error('Admin: Error loading products:', error);
+  }
 }
 
 // Render products table
 function renderProducts() {
   const tbody = document.querySelector('#productsTable tbody');
   tbody.innerHTML = '';
-  
+
   const searchInput = document.getElementById('searchInput');
   const q = searchInput?.value?.trim().toLowerCase() || '';
-  
+
   // Filter and sort
   let items = _productsCache.filter(p => {
     if (!q) return true;
+    
+    // Split search query into individual words for better matching
+    const searchWords = q.split(/\s+/).filter(word => word.length > 0);
+    
     const b = (p.barcode || '').toLowerCase();
     const n = (p.name || '').toLowerCase();
-    return b.includes(q) || n.includes(q);
+    const c = (p.category_type || '').toLowerCase();
+    
+    // Check if any search word matches barcode, name, or category
+    return searchWords.some(word => 
+      b.includes(word) || n.includes(word) || c.includes(word)
+    );
   });
-  
+
   items.sort((a, b) => {
     const ta = a.updated_at || a.created_at || a.id || 0;
     const tb = b.updated_at || b.created_at || b.id || 0;
     return new Date(tb) - new Date(ta);
   });
-  
+
   // Pagination
   const perPage = 10;
   const total = items.length;
@@ -66,15 +82,18 @@ function renderProducts() {
   if (_productsPage > totalPages) _productsPage = totalPages;
   const start = (_productsPage - 1) * perPage;
   const pageItems = items.slice(start, start + perPage);
-  
+
+  // Render table for desktop
   pageItems.forEach(p => {
     const tr = document.createElement('tr');
     const imgHtml = p.image ? `<img src="${p.image}" alt="">` : '';
+    const priceDisplay = p.price ? parseFloat(p.price).toFixed(0) : '';
     tr.innerHTML = `
       <td>${imgHtml}</td>
       <td>${escapeHtml(p.barcode)}</td>
       <td class="product-name">${escapeHtml(p.name)}</td>
-      <td>${escapeHtml(p.price)}</td>
+      <td>${escapeHtml(p.category_type || '')}</td>
+      <td>${priceDisplay}</td>
       <td>
         <button data-id="${p.id}" class="edit">Sửa</button>
         <button data-id="${p.id}" class="del">Xóa</button>
@@ -82,9 +101,59 @@ function renderProducts() {
     `;
     tbody.appendChild(tr);
   });
-  
+
+  // Render mobile cards
+  renderMobileProducts(pageItems);
+
   // Render pagination
   renderPagination(total, totalPages);
+}
+
+// Render mobile product cards
+function renderMobileProducts(products) {
+  const container = document.getElementById('mobileProducts');
+  if (!container) return;
+
+  container.innerHTML = '';
+
+  products.forEach(p => {
+    const card = document.createElement('div');
+    card.className = 'product-card';
+
+    const imgHtml = p.image ? `<img src="${p.image}" alt="">` : '<div style="width:50px;height:50px;background:#f1f5f9;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:20px;">📦</div>';
+    const priceDisplay = p.price ? parseFloat(p.price).toFixed(0) : 'Chưa có';
+
+    card.innerHTML = `
+      <div class="product-card-row product-card-row-1">
+        ${imgHtml}
+        <div class="product-card-name">${escapeHtml(p.name)}</div>
+      </div>
+
+      <div class="product-card-row product-card-row-2">
+        <div class="product-info-item">
+          <span class="product-info-label">Barcode</span>
+          <span class="product-info-value">${escapeHtml(p.barcode)}</span>
+        </div>
+        <div class="product-info-item">
+          <span class="product-info-label">Danh mục</span>
+          <span class="product-info-value">${escapeHtml(p.category_type || 'Chưa phân loại')}</span>
+        </div>
+      </div>
+
+      <div class="product-card-row product-card-row-3">
+        <div class="product-price-block">
+          ${priceDisplay} VNĐ
+        </div>
+      </div>
+
+      <div class="product-card-actions">
+        <button data-id="${p.id}" class="edit">Sửa</button>
+        <button data-id="${p.id}" class="del">Xóa</button>
+      </div>
+    `;
+
+    container.appendChild(card);
+  });
 }
 
 function renderPagination(total, totalPages) {
@@ -176,6 +245,7 @@ function clearFieldError(fieldId) {
 function resetForm() {
   document.getElementById('addForm').reset();
   document.getElementById('editingId').value = '';
+  document.getElementById('addImage').dataset.originalImage = '';
   document.getElementById('formTitle').textContent = 'Thêm sản phẩm';
   document.getElementById('submitBtn').textContent = 'Thêm';
   document.getElementById('cancelEdit').style.display = 'none';
@@ -286,6 +356,11 @@ document.getElementById('addForm').addEventListener('submit', async (e) => {
   const price = document.getElementById('addPrice').value.trim();
   let image = document.getElementById('addImage').value.trim();
   
+  // If editing and image shows "Đã có ảnh", use the original image path
+  if (id && image === 'Đã có ảnh') {
+    image = document.getElementById('addImage').dataset.originalImage || '';
+  }
+  
   // Clear previous errors
   ['addBarcode', 'addName', 'addCategory', 'addPrice', 'addImage'].forEach(clearFieldError);
   
@@ -335,6 +410,9 @@ document.getElementById('addForm').addEventListener('submit', async (e) => {
   const payload = { barcode, name, image };
   if (price) payload.price = price;
   if (categoryId) payload.category_id = categoryId;
+  
+  console.log('Submit payload:', payload);
+  console.log('Category ID:', categoryId);
   
   try {
     let r;
@@ -415,10 +493,73 @@ document.getElementById('productsTable').addEventListener('click', async (e) => 
     const p = await r.json();
     document.getElementById('addBarcode').value = p.barcode || '';
     document.getElementById('addName').value = p.name || '';
-    document.getElementById('addCategory').value = p.category_id || '';
-    document.getElementById('addPrice').value = p.price || '';
-    document.getElementById('addImage').value = p.image || '';
+    document.getElementById('addPrice').value = p.price ? parseFloat(p.price).toFixed(0) : '';
+    document.getElementById('addImage').value = p.image ? 'Đã có ảnh' : '';
     document.getElementById('editingId').value = p.id;
+    // Store original image path for submission
+    document.getElementById('addImage').dataset.originalImage = p.image || '';
+    
+    // Set category after ensuring dropdown is populated
+    setTimeout(() => {
+      document.getElementById('addCategory').value = p.category_id || '';
+    }, 100);
+    
+    document.getElementById('formTitle').textContent = 'Sửa sản phẩm';
+    document.getElementById('submitBtn').textContent = 'Lưu';
+    document.getElementById('cancelEdit').style.display = 'inline-block';
+    showPreview(p.image);
+    
+    const addCard = document.getElementById('addCard');
+    if (addCard) addCard.classList.add('open');
+    document.getElementById('toggleAddBtn').textContent = 'Đóng';
+    
+    setTimeout(() => document.getElementById('addBarcode').focus(), 200);
+  }
+});
+
+// Mobile products click handler (edit/delete)
+document.getElementById('mobileProducts').addEventListener('click', async (e) => {
+  const id = e.target.dataset.id;
+  
+  if (e.target.classList.contains('del')) {
+    if (!confirm('Xóa sản phẩm này?')) return;
+    
+    const token = await getCSRFToken();
+    const r = await fetch(`${API.products}/${id}`, {
+      method: 'DELETE',
+      credentials: 'include',
+      headers: { 'csrf-token': token }
+    });
+    
+    if (r.ok) {
+      await loadProducts();
+      showToast('Đã xóa sản phẩm', 3000, 'success');
+    } else {
+      showToast('Lỗi khi xóa', 3000, 'error');
+    }
+  }
+  
+  if (e.target.classList.contains('edit')) {
+    const r = await fetch(`${API.products}/id/${id}`, { credentials: 'include' });
+    if (!r.ok) {
+      showToast('Không lấy được sản phẩm', 3000, 'error');
+      return;
+    }
+    
+    const p = await r.json();
+    document.getElementById('addBarcode').value = p.barcode || '';
+    document.getElementById('addName').value = p.name || '';
+    document.getElementById('addPrice').value = p.price ? parseFloat(p.price).toFixed(0) : '';
+    document.getElementById('addImage').value = p.image ? 'Đã có ảnh' : '';
+    document.getElementById('editingId').value = p.id;
+    // Store original image path for submission
+    document.getElementById('addImage').dataset.originalImage = p.image || '';
+    
+    // Set category after ensuring dropdown is populated
+    setTimeout(() => {
+      document.getElementById('addCategory').value = p.category_id || '';
+    }, 100);
+    
     document.getElementById('formTitle').textContent = 'Sửa sản phẩm';
     document.getElementById('submitBtn').textContent = 'Lưu';
     document.getElementById('cancelEdit').style.display = 'inline-block';
@@ -434,8 +575,32 @@ document.getElementById('productsTable').addEventListener('click', async (e) => 
 
 // Cancel edit
 document.getElementById('cancelEdit').addEventListener('click', () => {
+  // Reset fields then hide the add/edit panel instead of switching to add mode
   resetForm();
+  const addCard = document.getElementById('addCard');
+  if (addCard && addCard.classList.contains('open')) {
+    addCard.classList.remove('open');
+  }
+  const toggle = document.getElementById('toggleAddBtn');
+  if (toggle) toggle.textContent = 'Thêm sản phẩm';
 });
+
+// Helper function to close all collapsible sections
+function closeAllSections() {
+  // Close add form
+  const addCard = document.getElementById('addCard');
+  if (addCard && addCard.classList.contains('open')) {
+    addCard.classList.remove('open');
+    document.getElementById('toggleAddBtn').textContent = 'Thêm sản phẩm';
+  }
+  
+  // Close categories
+  const categoriesCard = document.getElementById('categoriesCard');
+  if (categoriesCard && categoriesCard.classList.contains('open')) {
+    categoriesCard.classList.remove('open');
+    document.getElementById('toggleCategoriesBtn').textContent = 'Quản lý danh mục';
+  }
+}
 
 // Toggle add form
 document.getElementById('toggleAddBtn').addEventListener('click', () => {
@@ -446,10 +611,27 @@ document.getElementById('toggleAddBtn').addEventListener('click', () => {
     addCard.classList.remove('open');
     document.getElementById('toggleAddBtn').textContent = 'Thêm sản phẩm';
   } else {
+    closeAllSections(); // Close other sections first
     resetForm();
     addCard.classList.add('open');
     document.getElementById('toggleAddBtn').textContent = 'Đóng';
     setTimeout(() => document.getElementById('addBarcode').focus(), 200);
+  }
+});
+
+// Toggle categories
+document.getElementById('toggleCategoriesBtn').addEventListener('click', () => {
+  const categoriesCard = document.getElementById('categoriesCard');
+  const isOpen = categoriesCard.classList.contains('open');
+  
+  if (isOpen) {
+    categoriesCard.classList.remove('open');
+    document.getElementById('toggleCategoriesBtn').textContent = 'Quản lý danh mục';
+  } else {
+    closeAllSections(); // Close other sections first
+    categoriesCard.classList.add('open');
+    document.getElementById('toggleCategoriesBtn').textContent = 'Đóng';
+    setTimeout(() => document.getElementById('categoryName').focus(), 200);
   }
 });
 
@@ -462,7 +644,13 @@ document.getElementById('searchInput').addEventListener('input', () => {
 // Clear errors on input
 ['addBarcode', 'addName', 'addImage'].forEach(id => {
   const el = document.getElementById(id);
-  if (el) el.addEventListener('input', () => clearFieldError(id));
+  if (el) el.addEventListener('input', () => {
+    clearFieldError(id);
+    // If user changes image input, clear original image data
+    if (id === 'addImage') {
+      el.dataset.originalImage = '';
+    }
+  });
 });
 
 const priceEl = document.getElementById('addPrice');
@@ -633,13 +821,15 @@ let _categoriesCache = [];
 // Load categories
 async function loadCategories() {
   try {
-    const r = await fetch('../api/categories.php');
+    console.log('Admin: Loading categories from', API.categories);
+    const r = await fetch(API.categories);
     const categories = await r.json();
+    console.log('Admin: Loaded categories:', categories);
     _categoriesCache = categories;
     renderCategories();
     populateCategoryDropdown();
   } catch (error) {
-    console.error('Error loading categories:', error);
+    console.error('Admin: Error loading categories:', error);
   }
 }
 
@@ -649,10 +839,10 @@ function renderCategories() {
   if (!list) return;
 
   list.innerHTML = _categoriesCache.map(cat => `
-    <div class="category-item">
-      <span class="category-name">${cat.type}</span>
+    <div class="category-item" data-id="${cat.id}">
+      <span class="category-name" ondblclick="startEditCategory(${cat.id}, '${cat.type.replace(/'/g, "\\'")}')">${escapeHtml(cat.type)}</span>
       <div class="category-actions">
-        <button class="edit-btn" onclick="editCategory(${cat.id}, '${cat.type}')">Sửa</button>
+        <button class="edit-btn" onclick="startEditCategory(${cat.id}, '${cat.type.replace(/'/g, "\\'")}')">Sửa</button>
         <button class="delete-btn" onclick="deleteCategory(${cat.id})">Xóa</button>
       </div>
     </div>
@@ -680,13 +870,14 @@ async function addCategory() {
   }
 
   try {
-    const r = await fetch('../api/categories.php', {
+    const r = await fetch(API.categories, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ type: name })
     });
 
     const result = await r.json();
+
     if (result.success) {
       input.value = '';
       await loadCategories();
@@ -700,21 +891,71 @@ async function addCategory() {
   }
 }
 
-// Edit category
-function editCategory(id, currentType) {
-  const newType = prompt('Nhập loại mới cho danh mục:', currentType);
-  if (!newType || newType.trim() === currentType) return;
+// Start inline edit for category
+function startEditCategory(id, currentType) {
+  const item = document.querySelector(`.category-item[data-id="${id}"]`);
+  if (!item) return;
 
-  updateCategory(id, newType.trim());
+  const nameSpan = item.querySelector('.category-name');
+  const actionsDiv = item.querySelector('.category-actions');
+
+  // Replace span with input
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.value = currentType;
+  input.className = 'category-edit-input';
+  input.style.cssText = `
+    flex: 1;
+    padding: 8px 12px;
+    border: 2px solid var(--primary);
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 500;
+  `;
+
+  // Replace actions with save/cancel buttons
+  const newActions = document.createElement('div');
+  newActions.className = 'category-actions';
+  newActions.innerHTML = `
+    <button class="save-btn" onclick="saveEditCategory(${id})">Lưu</button>
+    <button class="cancel-btn" onclick="cancelEditCategory(${id}, '${currentType.replace(/'/g, "\\'")}')">Hủy</button>
+  `;
+
+  nameSpan.replaceWith(input);
+  actionsDiv.replaceWith(newActions);
+
+  // Focus and select all text
+  input.focus();
+  input.select();
+
+  // Handle Enter key
+  input.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+      saveEditCategory(id);
+    } else if (e.key === 'Escape') {
+      cancelEditCategory(id, currentType);
+    }
+  });
 }
 
-// Update category
-async function updateCategory(id, type) {
+// Save inline edit
+async function saveEditCategory(id) {
+  const item = document.querySelector(`.category-item[data-id="${id}"]`);
+  if (!item) return;
+
+  const input = item.querySelector('.category-edit-input');
+  const newType = input.value.trim();
+
+  if (!newType) {
+    showToast('Tên danh mục không được để trống', 'error');
+    return;
+  }
+
   try {
-    const r = await fetch('../api/categories.php', {
+    const r = await fetch(API.categories, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, type })
+      body: JSON.stringify({ id, type: newType })
     });
 
     const result = await r.json();
@@ -730,12 +971,38 @@ async function updateCategory(id, type) {
   }
 }
 
+// Cancel inline edit
+function cancelEditCategory(id, originalType) {
+  const item = document.querySelector(`.category-item[data-id="${id}"]`);
+  if (!item) return;
+
+  const input = item.querySelector('.category-edit-input');
+  const actionsDiv = item.querySelector('.category-actions');
+
+  // Restore original span
+  const span = document.createElement('span');
+  span.className = 'category-name';
+  span.textContent = originalType;
+  span.setAttribute('ondblclick', `startEditCategory(${id}, '${originalType.replace(/'/g, "\\'")}')`);
+
+  // Restore original actions
+  const originalActions = document.createElement('div');
+  originalActions.className = 'category-actions';
+  originalActions.innerHTML = `
+    <button class="edit-btn" onclick="startEditCategory(${id}, '${originalType.replace(/'/g, "\\'")}')">Sửa</button>
+    <button class="delete-btn" onclick="deleteCategory(${id})">Xóa</button>
+  `;
+
+  input.replaceWith(span);
+  actionsDiv.replaceWith(originalActions);
+}
+
 // Delete category
 async function deleteCategory(id) {
   if (!confirm('Bạn có chắc muốn xóa loại danh mục này?')) return;
 
   try {
-    const r = await fetch(`../api/categories.php?id=${id}`, {
+    const r = await fetch(`${API.categories}?id=${id}`, {
       method: 'DELETE'
     });
 
@@ -756,6 +1023,33 @@ async function deleteCategory(id) {
 document.getElementById('addCategoryBtn')?.addEventListener('click', addCategory);
 document.getElementById('categoryName')?.addEventListener('keypress', (e) => {
   if (e.key === 'Enter') addCategory();
+});
+
+// Toggle password visibility
+document.getElementById('togglePassword')?.addEventListener('click', function() {
+  const passwordInput = document.getElementById('password');
+  const toggleBtn = this;
+  const isPassword = passwordInput.type === 'password';
+  
+  passwordInput.type = isPassword ? 'text' : 'password';
+  
+  // Update icon and title
+  const iconSvg = toggleBtn.querySelector('svg');
+  if (isPassword) {
+    // Show eye-off icon
+    iconSvg.innerHTML = `
+      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+      <line x1="1" y1="1" x2="23" y2="23"></line>
+    `;
+    toggleBtn.title = 'Ẩn mật khẩu';
+  } else {
+    // Show eye icon
+    iconSvg.innerHTML = `
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+      <circle cx="12" cy="12" r="3"></circle>
+    `;
+    toggleBtn.title = 'Hiện mật khẩu';
+  }
 });
 
 // Initialize - check auth status
