@@ -26,6 +26,16 @@ function formatPrice(n) {
   }
 }
 
+// Return product image or inline SVG placeholder
+function defaultImageDataUrl() {
+  // Use a static default product image from uploads if available
+  return '/uploads/product.png';
+}
+
+function getImageUrl(url) {
+  return url && String(url).trim() ? url : defaultImageDataUrl();
+}
+
 // Fallback delegated tab handler: ensures tabs switch even if direct listeners fail
 document.addEventListener('click', (e) => {
   const tab = e.target.closest && e.target.closest('.tab');
@@ -378,14 +388,8 @@ function showProductForBarcode(code) {
   if (notFoundBox) notFoundBox.classList.remove('show');
   
   if (p) {
-    if (p.image) {
-      productImage.src = p.image;
-      productImage.classList.remove('placeholder');
-    } else {
-      productImage.src = '';
-      productImage.classList.add('placeholder');
-      productImage.textContent = '📦';
-    }
+    productImage.src = getImageUrl(p.image);
+    productImage.classList.remove('placeholder');
     productName.textContent = p.name;
     productCategory.textContent = p.category_type ? `📂 ${p.category_type}` : '';
     productPrice.textContent = formatPrice(p.price) + ' ₫';
@@ -446,7 +450,7 @@ function renderCart() {
       div.dataset.code = code;
       
       div.innerHTML = `
-        <img src="${p.image || ''}" alt="${p.name}" class="cart-item-image" onerror="this.style.display='none'">
+        <img src="${getImageUrl(p.image)}" alt="${p.name}" class="cart-item-image" onerror="this.src='${defaultImageDataUrl()}'">
         <div class="cart-item-info">
           <div class="cart-item-name">${p.name}</div>
           <div class="cart-item-price">${formatPrice(priceNum)} ₫</div>
@@ -634,7 +638,7 @@ checkoutBtn.addEventListener('click', () => {
   
   // Use your own QR code image
   if (paymentQRCode) {
-    paymentQRCode.src = 'QR.jpg';
+    paymentQRCode.src = 'uploads/QR.jpg';
   }
   
   if (paymentAmount) paymentAmount.textContent = formatted;
@@ -721,7 +725,7 @@ function renderProductList() {
   pageItems.forEach((product) => {
     html += `
       <div class="product-item">
-        <img src="${product.image || ''}" alt="${product.name}" class="product-item-image" onerror="this.classList.add('placeholder'); this.textContent='📦';">
+        <img src="${getImageUrl(product.image)}" alt="${product.name}" class="product-item-image" onerror="this.src='${defaultImageDataUrl()}'">
         <div class="product-item-name">${product.name}</div>
         <div class="product-item-price">${formatPrice(product.price)} ₫</div>
         <button class="add-to-cart" data-barcode="${product.barcode}">Thêm vào giỏ</button>
@@ -771,14 +775,14 @@ loadCategories();
 window.addEventListener('focus', listDevices);
 
 // Setup event listeners (DOM is ready since script is at end of body)
-console.log('Setting up event listeners');
+// event listeners setup
 
 const tabs = document.querySelectorAll('.tab');
 const tabContents = document.querySelectorAll('.tab-content');
 
 tabs.forEach(tab => {
   tab.addEventListener('click', () => {
-    console.log('Tab clicked:', tab.dataset.tab);
+    // tab clicked
     // Remove active class from all tabs
     tabs.forEach(t => t.classList.remove('active'));
     // Add active class to clicked tab
@@ -790,7 +794,7 @@ tabs.forEach(tab => {
     // Show selected tab content
     const tabId = tab.dataset.tab + 'Tab';
     const tabContent = document.getElementById(tabId);
-    console.log('Switching to tab:', tabId, 'Element found:', !!tabContent);
+    // switching to tab
     if (tabContent) {
       // Force display with multiple methods
       tabContent.style.display = 'block';
@@ -798,7 +802,7 @@ tabs.forEach(tab => {
       tabContent.style.opacity = '1';
       tabContent.removeAttribute('hidden');
       
-      console.log('Tab display set to block, computed:', window.getComputedStyle(tabContent).display);
+      // tab display set
       
       try {
         // Ensure the browse area is visible to the user (auto-scroll)
@@ -820,28 +824,28 @@ tabs.forEach(tab => {
     
     // Load products for browse tab
     if (tab.dataset.tab === 'browse') {
-      console.log('Browse tab clicked, categories length:', Object.keys(categories).length);
+      // browse tab clicked
       // Ensure products and categories are loaded before setting up filters
       const loadPromises = [];
       if (Object.keys(products).length === 0) {
-        console.log('Products not loaded, loading...');
+        // products not loaded, loading
         loadPromises.push(loadProducts());
       }
       if (Object.keys(categories).length === 0) {
-        console.log('Categories not loaded, loading...');
+        // categories not loaded, loading
         loadPromises.push(loadCategories());
       }
       
       if (loadPromises.length > 0) {
         Promise.all(loadPromises).then(() => {
-          console.log('Data loaded, proceeding with setup');
+          // data loaded
           setTimeout(() => {
             setupBrowseFilters();
             loadBrowseProducts();
           }, 10);
         });
       } else {
-        console.log('Data already loaded, proceeding');
+        // data already loaded
         setTimeout(() => {
           setupBrowseFilters();
           loadBrowseProducts();
@@ -852,7 +856,7 @@ tabs.forEach(tab => {
 });
 
 // Browse filters
-console.log('Browse filters found:', !!document.getElementById('browseCategoryFilter'), !!document.getElementById('browsePriceFilter'));
+// browse filters presence checked
 
 // Browse filters will be set up when browse tab is clicked
 
