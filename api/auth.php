@@ -12,6 +12,9 @@ require_once __DIR__ . '/../models/User.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
+// Restrict API access to allowed pages/origins
+requireAllowedRequestSource();
+
 $user = new User();
 $method = $_SERVER['REQUEST_METHOD'];
 
@@ -69,6 +72,42 @@ if ($method === 'GET' && $action === 'status') {
 // Route: GET /api/auth.php/csrf-token - Get CSRF token
 if ($method === 'GET' && $action === 'csrf-token') {
     jsonResponse(['csrfToken' => generateCSRFToken()]);
+}
+
+// Route: POST /api/auth.php/change-password - Change current user's password
+if ($method === 'POST' && $action === 'change-password') {
+    requireAuth();
+
+    // Validate CSRF token from header
+    $csrfHeader = $_SERVER['HTTP_CSRF_TOKEN'] ?? '';
+    if (!validateCSRFToken($csrfHeader)) {
+        errorResponse('invalid_csrf', 403);
+    }
+
+    $data = getJsonBody();
+    $old = $data['old_password'] ?? '';
+    $new = $data['new_password'] ?? '';
+
+    if ($old === '' || $new === '') {
+        errorResponse('missing', 400);
+    }
+
+    $currentUser = $user->getById($_SESSION['user_id']);
+    if (!$currentUser) {
+        errorResponse('unauthorized', 401);
+    }
+
+    if (!$user->verifyPassword($currentUser, $old)) {
+        errorResponse('invalid_old_password', 403);
+    }
+
+    // Update password (no strong validation required per spec)
+    $ok = $user->updatePassword($currentUser['id'], $new);
+    if (!$ok) {
+        errorResponse('update_failed', 500);
+    }
+
+    jsonResponse(['ok' => true]);
 }
 
 // Method/action not found
