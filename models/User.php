@@ -48,4 +48,11 @@ class User {
         }
         return password_verify($password, $user['password_hash']);
     }
+
+    // Update password for a user by id
+    public function updatePassword($id, $newPassword) {
+        $passwordHash = password_hash($newPassword, PASSWORD_BCRYPT);
+        $stmt = $this->db->prepare("UPDATE users SET password_hash = ? WHERE id = ?");
+        return $stmt->execute([$passwordHash, $id]);
+    }
 }
