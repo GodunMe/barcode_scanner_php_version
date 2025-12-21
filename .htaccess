@@ -1,3 +1,37 @@
+#############################################
+# Restrict static asset access (JS/CSS) to only
+# requests originating from the site entry pages:
+# - /index.php
+# - /admin/index.php (and /admin/)
+#
+# This uses Referer checks. Place in document root.
+#############################################
+
+<IfModule mod_authz_core.c>
+  <FilesMatch "\.(js|css|map)$">
+    # Allow only when Referer matches the allowed entry pages
+    <RequireAll>
+      Require expr %{HTTP_REFERER} =~ m#/(index\.php|admin/index\.php|admin/?)$#
+    </RequireAll>
+  </FilesMatch>
+</IfModule>
+
+<IfModule !mod_authz_core.c>
+  <FilesMatch "\.(js|css|map)$">
+    Order Deny,Allow
+    Deny from all
+    SetEnvIfNoCase Referer "\/(index\.php|admin\/index\.php|admin\/?)(?:$|\?)" allowed_ref
+    Allow from env=allowed_ref
+  </FilesMatch>
+</IfModule>
+
+# Fallback: deny access to any file under /js/ unless referer allowed
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteCond %{REQUEST_URI} ^/js/ [NC]
+  RewriteCond %{HTTP_REFERER} !/(index\.php|admin/index\.php|admin/?)$ [NC]
+  RewriteRule .* - [F]
+</IfModule>
 # Apache configuration for Barcode Scanner
 # Enable URL rewriting for cleaner API routes
 
