@@ -12,6 +12,9 @@ require_once __DIR__ . '/../models/Product.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
+// Restrict API access to allowed pages/origins
+requireAllowedRequestSource();
+
 $product = new Product();
 $method = $_SERVER['REQUEST_METHOD'];
 

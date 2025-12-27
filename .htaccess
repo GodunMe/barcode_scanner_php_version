@@ -1,21 +1,18 @@
 #############################################
-# Restrict static asset access (JS/CSS) to only
-# requests originating from the site entry pages:
-# - /index.php
-# - /admin/index.php (and /admin/)
-#
-# This uses Referer checks. Place in document root.
+# Root-level security rules (combined)
+# - Protect static assets (JS/CSS) from direct leaks
+# - Deny direct HTTP access to sensitive PHP files under config/includes/models
+# - Block .sql/.env and dotfiles
 #############################################
 
+# 1) Static asset protection: prefer referer checks for normal page loads
 <IfModule mod_authz_core.c>
   <FilesMatch "\.(js|css|map)$">
-    # Allow only when Referer matches the allowed entry pages
     <RequireAll>
       Require expr %{HTTP_REFERER} =~ m#/(index\.php|admin/index\.php|admin/?)$#
     </RequireAll>
   </FilesMatch>
 </IfModule>
-
 <IfModule !mod_authz_core.c>
   <FilesMatch "\.(js|css|map)$">
     Order Deny,Allow
@@ -25,16 +22,47 @@
   </FilesMatch>
 </IfModule>
 
-# Fallback: deny access to any file under /js/ unless referer allowed
+# 2) Deny direct requests to PHP files inside sensitive directories (config/includes/models)
 <IfModule mod_rewrite.c>
   RewriteEngine On
-  RewriteCond %{REQUEST_URI} ^/js/ [NC]
-  RewriteCond %{HTTP_REFERER} !/(index\.php|admin/index\.php|admin/?)$ [NC]
-  RewriteRule .* - [F]
-</IfModule>
-# Apache configuration for Barcode Scanner
-# Enable URL rewriting for cleaner API routes
+  # block any direct access to PHP files in these dirs
+  RewriteRule ^(config|includes|models)/.*\.php$ - [F,L,NC]
 
+  # 3) Restrict admin assets unless request comes from same host (page load) or from localhost
+  # allow if Referer contains this host; otherwise block
+  RewriteCond %{REQUEST_URI} ^/admin/(admin\.js|admin\.css)$ [NC]
+  RewriteCond %{REMOTE_ADDR} !^127\.0\.0\.1$
+  RewriteCond %{HTTP_REFERER} !^https?://%{HTTP_HOST} [NC]
+  RewriteRule .* - [F,L]
+
+  # Block direct address-bar access to specific css files when Referer is not from this host
+  RewriteCond %{REQUEST_URI} ^/css/(admin\.css|style\.css)$ [NC]
+  RewriteCond %{HTTP_REFERER} !^https?://%{HTTP_HOST} [NC]
+  RewriteRule .* - [F,L]
+</IfModule>
+
+# 4) Deny access to SQL, env and other sensitive file types
+<FilesMatch "\.(sql|env|env\.dist)$">
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Deny from all
+  </IfModule>
+</FilesMatch>
+
+# 5) Protect dotfiles (e.g., .env, .git) — deny all
+<FilesMatch "^\.">
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+  </IfModule>
+</FilesMatch>
+
+# Existing rewrite rules (API and admin routes)
 <IfModule mod_rewrite.c>
     RewriteEngine On
     RewriteBase /
@@ -56,12 +84,6 @@
     RewriteRule ^admin/status$ api/auth.php/status [L,QSA]
     RewriteRule ^admin/csrf-token$ api/auth.php/csrf-token [L,QSA]
 </IfModule>
-
-# Protect sensitive files
-<FilesMatch "^\.">
-    Order allow,deny
-    Deny from all
-</FilesMatch>
 
 # Prevent directory listing
 Options -Indexes

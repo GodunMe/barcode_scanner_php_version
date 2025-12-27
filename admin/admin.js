@@ -14,7 +14,18 @@ const API = {
   categories: '../api/categories.php',
   auth: '../api/auth.php',
   upload: '../api/upload.php'
+  ,deleteUpload: '../api/delete_upload.php'
 };
+
+// Default image placeholder (inline SVG data URL)
+function defaultAdminImageDataUrl() {
+  // Use a static default product image from uploads if available
+  return '/uploads/product.png';
+}
+
+function getAdminImageUrl(url) {
+  return url && String(url).trim() ? url : defaultAdminImageDataUrl();
+}
 
 // Check authentication status
 async function checkAuth() {
@@ -33,10 +44,9 @@ async function getCSRFToken() {
 // Load products
 async function loadProducts() {
   try {
-    console.log('Admin: Loading products from', API.products);
     const r = await fetch(API.products);
     const data = await r.json();
-    console.log('Admin: Loaded products:', data.slice(0, 2)); // Show first 2 products
+    // Admin: products loaded
     _productsCache = data;
     renderProducts();
   } catch (error) {
@@ -86,7 +96,7 @@ function renderProducts() {
   // Render table for desktop
   pageItems.forEach(p => {
     const tr = document.createElement('tr');
-    const imgHtml = p.image ? `<img src="${p.image}" alt="">` : '';
+    const imgHtml = `<img src="${getAdminImageUrl(p.image)}" alt="">`;
     const priceDisplay = p.price ? parseFloat(p.price).toFixed(0) : '';
     tr.innerHTML = `
       <td>${imgHtml}</td>
@@ -120,7 +130,7 @@ function renderMobileProducts(products) {
     const card = document.createElement('div');
     card.className = 'product-card';
 
-    const imgHtml = p.image ? `<img src="${p.image}" alt="">` : '<div style="width:50px;height:50px;background:#f1f5f9;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:20px;">📦</div>';
+    const imgHtml = `<img src="${getAdminImageUrl(p.image)}" alt="">`;
     const priceDisplay = p.price ? parseFloat(p.price).toFixed(0) : 'Chưa có';
 
     card.innerHTML = `
@@ -259,10 +269,54 @@ function resetForm() {
 function showPreview(url) {
   const preview = document.getElementById('preview');
   if (url) {
-    preview.innerHTML = `<img src="${url}" alt="Preview">`;
+    const src = getAdminImageUrl(url);
+    preview.innerHTML = `
+      <div class="preview-wrap">
+        <img src="${src}" alt="Preview" class="preview-img" onerror="this.src='${defaultAdminImageDataUrl()}'">
+        <button type="button" id="removePreviewBtn" class="icon-btn remove-img" title="Xóa ảnh">×</button>
+      </div>
+    `;
+    const btn = document.getElementById('removePreviewBtn');
+    if (btn) btn.addEventListener('click', clearImageSelection);
   } else {
     preview.innerHTML = '';
   }
+}
+
+// Clear selected/preview image
+function clearImageSelection() {
+  const preview = document.getElementById('preview');
+  const addImage = document.getElementById('addImage');
+  if (addImage) {
+    const orig = addImage.dataset.originalImage || '';
+    // If this image is an uploaded file under /uploads/, request server to delete it
+    if (orig && orig.startsWith('/uploads/')) {
+      (async () => {
+        try {
+          const token = await getCSRFToken();
+          const res = await fetch(API.deleteUpload, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json', 'csrf-token': token },
+            body: JSON.stringify({ url: orig })
+          });
+          if (!res.ok) {
+            const j = await res.json().catch(() => ({}));
+            console.warn('Admin: delete upload failed', res.status, j);
+          } else {
+            const j = await res.json().catch(() => ({}));
+            // delete upload response received
+          }
+        } catch (e) {
+          console.warn('Failed to delete uploaded image on server:', e);
+        }
+      })();
+    }
+    addImage.value = '';
+    addImage.dataset.originalImage = '';
+  }
+  _capturedImageData = null;
+  if (preview) preview.innerHTML = '';
 }
 
 // Upload data URL
@@ -345,6 +399,72 @@ document.getElementById('logoutBtn').addEventListener('click', async () => {
   location.reload();
 });
 
+// Change password modal handlers (use event delegation for robustness)
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest && e.target.closest('#changePassBtn');
+  if (!btn) return;
+
+  const modal = document.getElementById('changePassModal');
+  if (!modal) return;
+
+  // Open modal
+  modal.style.display = 'flex';
+  const oldInput = document.getElementById('oldPassword');
+  const newInput = document.getElementById('newPassword');
+  const msg = document.getElementById('changePassMsg');
+  if (oldInput) oldInput.value = '';
+  if (newInput) newInput.value = '';
+  if (msg) { msg.style.display = 'none'; msg.textContent = ''; }
+
+  // Attach cancel handler
+  const cancelBtn = document.getElementById('cancelChangePass');
+  if (cancelBtn) {
+    cancelBtn.onclick = () => { modal.style.display = 'none'; };
+  }
+
+  // Attach submit handler once
+  const form = document.getElementById('changePassForm');
+  if (form && !form._changePassAttached) {
+    form.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      ['oldPassword','newPassword'].forEach(clearFieldError);
+      const oldPassword = (oldInput && oldInput.value) || '';
+      const newPassword = (newInput && newInput.value) || '';
+      if (!oldPassword) { showFieldError('oldPassword', 'Mật khẩu hiện tại là bắt buộc'); return; }
+      if (!newPassword) { showFieldError('newPassword', 'Mật khẩu mới là bắt buộc'); return; }
+
+      try {
+        const token = await getCSRFToken();
+        const r = await fetch(`${API.auth}/change-password`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json', 'csrf-token': token },
+          body: JSON.stringify({ old_password: oldPassword, new_password: newPassword })
+        });
+
+        if (r.ok) {
+          showToast('Đổi mật khẩu thành công', 3000, 'success');
+          modal.style.display = 'none';
+        } else {
+          const j = await r.json().catch(() => ({}));
+          const err = j.error || 'Lỗi';
+          if (err === 'invalid_old_password') {
+            showFieldError('oldPassword', 'Mật khẩu hiện tại không đúng');
+          } else if (err === 'invalid_csrf') {
+            if (msg) { msg.textContent = 'Lỗi bảo mật (CSRF). Làm mới trang và thử lại.'; msg.style.display = 'block'; }
+          } else {
+            if (msg) { msg.textContent = j.error || 'Không thể đổi mật khẩu'; msg.style.display = 'block'; }
+          }
+        }
+      } catch (err) {
+        console.error('Change password error', err);
+        if (msg) { msg.textContent = 'Lỗi kết nối'; msg.style.display = 'block'; }
+      }
+    });
+    form._changePassAttached = true;
+  }
+});
+
 // Add/Edit form handler
 document.getElementById('addForm').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -411,8 +531,7 @@ document.getElementById('addForm').addEventListener('submit', async (e) => {
   if (price) payload.price = price;
   if (categoryId) payload.category_id = categoryId;
   
-  console.log('Submit payload:', payload);
-  console.log('Category ID:', categoryId);
+  // submit payload logged
   
   try {
     let r;
@@ -727,40 +846,151 @@ let scanStream = null;
 const scanArea = document.getElementById('scanArea');
 const scanVideo = document.getElementById('scanVideo');
 
+// Admin scanning helpers: use native BarcodeDetector when available, fallback to ZXing
+let _adminBarcodeDetector = null;
+function getAdminBarcodeDetector() {
+  if (typeof BarcodeDetector === 'undefined') return null;
+  try {
+    if (!_adminBarcodeDetector) _adminBarcodeDetector = new BarcodeDetector({ formats: ['ean_13','ean_8','upc_e','upc_a','code_128','code_39','qr_code'] });
+    return _adminBarcodeDetector;
+  } catch (e) { return null; }
+}
+
+function preprocessCanvas(ctx, w, h) {
+  try {
+    const imgd = ctx.getImageData(0, 0, w, h);
+    const data = imgd.data;
+    let min = 255, max = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      const g = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
+      data[i] = data[i + 1] = data[i + 2] = g;
+      if (g < min) min = g;
+      if (g > max) max = g;
+    }
+    const range = Math.max(1, max - min);
+    for (let i = 0; i < data.length; i += 4) {
+      let v = data[i];
+      v = Math.round((v - min) * 255 / range);
+      data[i] = data[i + 1] = data[i + 2] = v;
+    }
+    ctx.putImageData(imgd, 0, 0);
+  } catch (e) { /* ignore */ }
+}
+
+// Start a scanner loop for a given video element. Returns a stopper function.
+function adminStartScanner(videoEl, onDetected) {
+  if (!videoEl || typeof onDetected !== 'function') throw new Error('invalid_args');
+  let stopped = false;
+  let stream = null;
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  let lastDetected = { code: null, time: 0 };
+  let lastZxingAttempt = 0;
+
+  async function init() {
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } } });
+      videoEl.srcObject = stream;
+      await videoEl.play();
+      loop();
+    } catch (e) {
+      stopped = true;
+      throw e;
+    }
+  }
+
+  async function loop() {
+    if (stopped) return;
+    try {
+      const w = videoEl.videoWidth || 640;
+      const h = videoEl.videoHeight || 480;
+      canvas.width = w; canvas.height = h;
+      ctx.drawImage(videoEl, 0, 0, w, h);
+
+      // try native detector first
+      const detector = getAdminBarcodeDetector();
+      if (detector) {
+        try {
+          const res = await detector.detect(canvas);
+          if (res && res.length) {
+            const code = res[0].rawValue || (res[0].raw && res[0].raw.value) || null;
+            if (code) {
+              const now = Date.now();
+              if (!(lastDetected.code === code && (now - lastDetected.time) < 800)) {
+                lastDetected.code = code; lastDetected.time = now;
+                onDetected(code);
+              }
+            }
+          }
+        } catch (e) { /* ignore detector errors */ }
+      }
+
+      // ZXing fallback
+      preprocessCanvas(ctx, w, h);
+      try {
+        if (codeReader) {
+          const nowAttempt = Date.now();
+          if (nowAttempt - lastZxingAttempt >= 600) {
+            lastZxingAttempt = nowAttempt;
+            const img = new Image();
+            img.src = canvas.toDataURL('image/png');
+            await new Promise((res, rej) => { img.onload = res; img.onerror = rej; });
+            let zres = null;
+            if (typeof codeReader.decodeFromImageElement === 'function') zres = await codeReader.decodeFromImageElement(img);
+            else if (typeof codeReader.decodeFromImage === 'function') zres = await codeReader.decodeFromImage(img);
+            else if (typeof codeReader.decode === 'function') zres = await codeReader.decode(img);
+            const text = zres && (zres.text || zres.result || zres.rawValue) || null;
+            if (text) {
+              const now = Date.now();
+              if (!(lastDetected.code === text && (now - lastDetected.time) < 800)) {
+                lastDetected.code = text; lastDetected.time = now;
+                onDetected(text);
+              }
+            }
+          }
+        }
+      } catch (e) { /* ignore frame decode errors */ }
+    } catch (e) { /* loop error */ }
+    setTimeout(loop, 300);
+  }
+
+  init().catch(err => {
+    stopped = true;
+    console.error('adminStartScanner init failed', err);
+  });
+
+  return () => {
+    stopped = true;
+    try { if (stream) stream.getTracks().forEach(t => t.stop()); } catch (e) {}
+    try { if (videoEl && videoEl.srcObject) videoEl.srcObject = null; } catch (e) {}
+  };
+}
+
 document.getElementById('addBarcodeCameraBtn')?.addEventListener('click', async () => {
   try {
-    const devices = await codeReader.listVideoInputDevices();
-    const rear = devices.find(d => /back|rear|environment/i.test(d.label)) || devices[0];
-    
-    codeReader.decodeFromVideoDevice(rear?.deviceId, scanVideo, (result, err) => {
-      if (result) {
-        document.getElementById('addBarcode').value = result.getText();
-        clearFieldError('addBarcode');
-        
-        // Stop scanning
-        codeReader.reset();
-        if (scanStream) {
-          scanStream.getTracks().forEach(t => t.stop());
-          scanStream = null;
-        }
-        scanArea.style.display = 'none';
-      }
+    if (scanArea) scanArea.style.display = 'flex';
+    // start improved scanner: fills addBarcode when detected
+    const stopper = adminStartScanner(scanVideo, (code) => {
+      const el = document.getElementById('addBarcode');
+      if (el) el.value = code;
+      clearFieldError('addBarcode');
+
+      // stop and hide
+      try { stopper(); } catch (e) {}
+      if (scanArea) scanArea.style.display = 'none';
     });
-    
     scanStream = scanVideo.srcObject;
-    scanArea.style.display = 'flex';
+    // store stopper reference so stop button can use it
+    window._adminScanStopper = stopper;
   } catch (err) {
-    alert('Không thể mở camera: ' + err.message);
+    alert('Không thể mở camera: ' + (err && err.message || err));
   }
 });
 
 document.getElementById('stopScan')?.addEventListener('click', () => {
-  codeReader.reset();
-  if (scanStream) {
-    scanStream.getTracks().forEach(t => t.stop());
-    scanStream = null;
-  }
-  scanArea.style.display = 'none';
+  try { if (window._adminScanStopper) { window._adminScanStopper(); window._adminScanStopper = null; } } catch (e) {}
+  try { if (scanStream) { scanStream.getTracks().forEach(t => t.stop()); scanStream = null; } } catch (e) {}
+  if (scanArea) scanArea.style.display = 'none';
 });
 
 // Search barcode scanning
@@ -770,39 +1000,26 @@ const searchScanVideo = document.getElementById('searchScanVideo');
 
 document.getElementById('searchScanBtn')?.addEventListener('click', async () => {
   try {
-    const devices = await codeReader.listVideoInputDevices();
-    const rear = devices.find(d => /back|rear|environment/i.test(d.label)) || devices[0];
-    
-    codeReader.decodeFromVideoDevice(rear?.deviceId, searchScanVideo, (result, err) => {
-      if (result) {
-        document.getElementById('searchInput').value = result.getText();
-        _productsPage = 1;
-        renderProducts();
-        
-        // Stop scanning
-        codeReader.reset();
-        if (searchScanStream) {
-          searchScanStream.getTracks().forEach(t => t.stop());
-          searchScanStream = null;
-        }
-        searchScanModal.style.display = 'none';
-      }
+    if (searchScanModal) searchScanModal.style.display = 'flex';
+    const stopper = adminStartScanner(searchScanVideo, (code) => {
+      const el = document.getElementById('searchInput');
+      if (el) el.value = code;
+      _productsPage = 1;
+      renderProducts();
+      try { stopper(); } catch (e) {}
+      if (searchScanModal) searchScanModal.style.display = 'none';
     });
-    
     searchScanStream = searchScanVideo.srcObject;
-    searchScanModal.style.display = 'flex';
+    window._adminSearchScanStopper = stopper;
   } catch (err) {
-    alert('Không thể mở camera: ' + err.message);
+    alert('Không thể mở camera: ' + (err && err.message || err));
   }
 });
 
 document.getElementById('stopSearchScan')?.addEventListener('click', () => {
-  codeReader.reset();
-  if (searchScanStream) {
-    searchScanStream.getTracks().forEach(t => t.stop());
-    searchScanStream = null;
-  }
-  searchScanModal.style.display = 'none';
+  try { if (window._adminSearchScanStopper) { window._adminSearchScanStopper(); window._adminSearchScanStopper = null; } } catch (e) {}
+  try { if (searchScanStream) { searchScanStream.getTracks().forEach(t => t.stop()); searchScanStream = null; } } catch (e) {}
+  if (searchScanModal) searchScanModal.style.display = 'none';
 });
 
 // Mini camera stop
@@ -821,10 +1038,9 @@ let _categoriesCache = [];
 // Load categories
 async function loadCategories() {
   try {
-    console.log('Admin: Loading categories from', API.categories);
     const r = await fetch(API.categories);
     const categories = await r.json();
-    console.log('Admin: Loaded categories:', categories);
+    // Admin: categories loaded
     _categoriesCache = categories;
     renderCategories();
     populateCategoryDropdown();

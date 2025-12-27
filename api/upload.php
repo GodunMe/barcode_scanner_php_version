@@ -10,6 +10,9 @@ require_once __DIR__ . '/../includes/functions.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
+// Restrict API access to allowed pages/origins
+requireAllowedRequestSource();
+
 // Only POST allowed
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     errorResponse('method_not_allowed', 405);

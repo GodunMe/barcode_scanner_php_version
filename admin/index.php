@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <meta name="referrer" content="no-referrer">
+  <!-- removed no-referrer so browser sends Referer to allow guarded admin.js loader -->
   <style>
     :root {
       --primary: #6366f1;
@@ -608,6 +608,29 @@
       background: #e5e7eb;
     }
 
+    /* Preview image wrapper and remove button */
+    #preview { margin-top: 12px; position: relative; }
+    .preview-wrap { position: relative; display: inline-block; }
+    .preview-img { max-width: 150px; border-radius: 12px; border: 2px solid var(--border); display: block; }
+    .remove-img {
+      position: absolute;
+      right: -8px;
+      top: -8px;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: #fee2e2;
+      color: #b91c1c;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      border: none;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+      cursor: pointer;
+    }
+    .remove-img:hover { background: #fecaca; }
+
     /* Scrollbar styling for categories list */
     .categories-list::-webkit-scrollbar { width: 10px; }
     .categories-list::-webkit-scrollbar-track { background: transparent; }
@@ -859,6 +882,13 @@
           </svg>
           Trang chủ
         </a>
+        <button id="changePassBtn" class="btn btn-secondary">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="11" width="18" height="10" rx="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+          </svg>
+          Đổi mật khẩu
+        </button>
         <button id="logoutBtn" class="btn btn-danger">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
@@ -869,6 +899,30 @@
         </button>
       </div>
     </header>
+
+    <!-- Change Password Modal -->
+    <div id="changePassModal" class="modal" aria-hidden="true" style="display:none">
+      <div class="modal-content">
+        <h4>Đổi mật khẩu</h4>
+        <div id="changePassMsg" class="error-msg" style="display:none;margin-bottom:8px"></div>
+        <form id="changePassForm">
+          <div class="form-group">
+            <label for="oldPassword">Mật khẩu hiện tại</label>
+            <input type="password" id="oldPassword" autocomplete="current-password">
+            <div id="err_oldPassword" class="field-error"></div>
+          </div>
+          <div class="form-group">
+            <label for="newPassword">Mật khẩu mới</label>
+            <input type="password" id="newPassword" autocomplete="new-password">
+            <div id="err_newPassword" class="field-error"></div>
+          </div>
+          <div class="modal-actions">
+            <button type="button" id="cancelChangePass" class="btn btn-secondary">Hủy</button>
+            <button type="submit" id="submitChangePass" class="btn btn-primary">Lưu</button>
+          </div>
+        </form>
+      </div>
+    </div>
 
     <!-- Categories Management -->
     <div id="categoriesCard" class="card collapsible">
@@ -1038,6 +1092,6 @@
   </div>
 
   <script src="https://unpkg.com/@zxing/library@0.18.6/umd/index.min.js"></script>
-  <script src="admin.js"></script>
+  <script src="admin.js.php"></script>
 </body>
 </html>

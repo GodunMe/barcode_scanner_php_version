@@ -80,3 +80,37 @@ function checkRateLimit($key, $maxAttempts = 5, $timeWindow = 60) {
     
     return $data['count'] <= $maxAttempts;
 }
+
+// ----- Request source enforcement -----
+function getBaseOrigin() {
+    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+    $host = $_SERVER['HTTP_HOST'] ?? ($_SERVER['SERVER_NAME'] ?? '');
+    return rtrim($scheme . '://' . $host, '/');
+}
+
+function isAllowedRequestSource() {
+    // Only allow when Referer path explicitly ends with one of the allowed entry pages.
+    // Do NOT permit a generic same-origin Origin header to avoid broader access.
+    if (!empty($_SERVER['HTTP_REFERER'])) {
+        $refPath = parse_url($_SERVER['HTTP_REFERER'], PHP_URL_PATH) ?: '/';
+        // Accept both explicit index.php and directory-style referers like / or /admin/
+        $allowed = ['/', '/index.php', '/admin', '/admin/', '/admin/index.php'];
+        foreach ($allowed as $a) {
+            $len = strlen($a);
+            if ($len === 0) continue;
+            if (substr($refPath, -$len) === $a) return true;
+        }
+    }
+
+    // As a last resort, allow direct requests to the two allowed pages themselves
+    $reqPath = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH) ?: '/';
+    if ($reqPath === '/index.php' || $reqPath === '/admin/index.php') return true;
+
+    return false;
+}
+
+function requireAllowedRequestSource() {
+    if (!isAllowedRequestSource()) {
+        errorResponse('forbidden_origin', 403);
+    }
+}

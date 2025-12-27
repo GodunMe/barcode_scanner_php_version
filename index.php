@@ -876,10 +876,7 @@
         </button>
       </div>
 
-      <!-- Camera Select -->
-      <select id="videoSelect" class="camera-select">
-        <option value="">Chọn camera...</option>
-      </select>
+      <!-- Camera Select removed: default to back camera only -->
 
       <!-- Mode Toggle -->
       <div class="mode-toggle">
@@ -931,6 +928,9 @@
           <p>Không tìm thấy sản phẩm</p>
         </div>
       </div>
+      
+      <!-- Hidden canvas used by scanner preprocessing -->
+      <canvas id="canvas" style="display:none"></canvas>
     </div>
     </div> <!-- Close scanTab -->
 
@@ -938,6 +938,15 @@
     <div class="tab-content" id="browseTab" style="display: none; position: relative;">
         <div class="card">
         <h3 style="margin-bottom: 16px; color: var(--text);">🛍️ Duyệt sản phẩm</h3>
+
+        <!-- Search Bar -->
+        <div class="search-bar" style="margin-bottom: 16px; position: relative;">
+          <input type="text" id="browseNameFilter" class="camera-select" style="width: 100%; padding-right: 40px;" placeholder="Tìm theo tên sản phẩm...">
+          <button id="searchBtn" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-muted); font-size: 18px; cursor: pointer; height: 24px; width: 24px; display: flex; align-items: center; justify-content: center;">🔍</button>
+        </div>
+
+        <!-- Debug: shows current search query and match count (mobile troubleshooting) -->
+        <div id="browseDebug" style="font-size:12px; color:var(--text-muted); margin-bottom:8px; display:none;"></div>
 
         <!-- Filters -->
         <div class="browse-filters">
@@ -1027,6 +1036,18 @@
         <span id="paymentAmount">0</span> ₫
       </div>
       <button id="paymentCloseBtn" class="btn btn-primary" style="width: 100%;">Đóng</button>
+    </div>
+  </div>
+
+  <!-- Generic Confirm Modal -->
+  <div id="confirmModal" class="modal">
+    <div class="modal-content" style="max-width:360px;">
+      <h3 id="confirmTitle">Xác nhận</h3>
+      <p id="confirmMessage" style="margin-bottom:20px; color:var(--text-muted);"></p>
+      <div style="display:flex; gap:8px;">
+        <button id="confirmCancel" class="btn btn-secondary" style="flex:1">Hủy</button>
+        <button id="confirmOk" class="btn btn-primary" style="flex:1">Xác nhận</button>
+      </div>
     </div>
   </div>
 

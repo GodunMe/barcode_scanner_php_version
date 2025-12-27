@@ -3,7 +3,18 @@
  * For public product lookup and cart
  */
 
-const codeReader = new ZXing.BrowserMultiFormatReader();
+let codeReader = null;
+try {
+  if (window.ZXing && ZXing.BrowserMultiFormatReader) {
+    codeReader = new ZXing.BrowserMultiFormatReader();
+  }
+} catch (e) {
+  console.warn('ZXing init failed:', e);
+  codeReader = null;
+}
+const supportsBarcodeDetection = 'BarcodeDetector' in window;
+let barcodeDetector = null;
+let lastDetected = { code: null, time: 0 };
 let selectedDeviceId = null;
 let scanning = false;
 let products = {};
@@ -12,6 +23,9 @@ let mode = 'price';
 let cart = {};
 let currentStream = null;
 let scanningStopper = null;
+// Throttle ZXing decode attempts to avoid spamming errors
+let lastZxingAttempt = 0;
+let zxingErrorLastLog = 0;
 // Browse state for pagination
 let browsePage = 1;
 const BROWSE_PER_PAGE = 6;
@@ -89,7 +103,6 @@ function showToast(message, type = '') {
 
 // DOM Elements
 const video = document.getElementById('video');
-const videoSelect = document.getElementById('videoSelect');
 const startBtn = document.getElementById('startBtn');
 const stopBtn = document.getElementById('stopBtn');
 const productBox = document.getElementById('product');
@@ -113,20 +126,34 @@ const notFoundBox = document.getElementById('notFound');
 
 // Load products from API
 async function loadProducts() {
+  // Try API endpoint first, fallback to local JSON when no server is present
   try {
-    const response = await fetch('/api/products.php');
-    if (!response.ok) throw new Error('API error');
-    const data = await response.json();
-    products = data.reduce((m, p) => { m[p.barcode] = p; return m; }, {});
-    // Trigger render if browse tab is active
-    const activeTab = document.querySelector('.tab.active');
-    if (activeTab && activeTab.dataset.tab === 'browse') {
-      renderProductList();
+    // Prefer the PHP endpoint when available
+    let response = await fetch('/api/products.php');
+    if (!response.ok) {
+      // fallback to /api/products for other deployments
+      response = await fetch('/api/products');
+    }
+    if (response && response.ok) {
+      const data = await response.json();
+      if (Array.isArray(data)) products = data.reduce((m, p) => { if (p && p.barcode) m[p.barcode] = p; return m; }, {});
+      else if (data && typeof data === 'object') products = data;
+      else products = {};
+      const activeTab = document.querySelector('.tab.active');
+      if (activeTab && activeTab.dataset.tab === 'browse') renderProductList();
+      return products;
     }
   } catch (e) {
-    console.error('Failed to load products:', e);
+    console.warn('API products failed:', e);
+    // If API is not available, keep products empty and allow UI to show "no products" state.
     products = {};
+    const activeTab = document.querySelector('.tab.active');
+    if (activeTab && activeTab.dataset.tab === 'browse') renderProductList();
+    return products;
   }
+  // If API returned no ok response above, ensure products is empty
+  products = {};
+  return products;
 }
 
 async function loadCategories() {
@@ -314,72 +341,188 @@ function loadBrowseProducts() {
   renderProductList();
 }
 function listDevices() {
-  codeReader.listVideoInputDevices().then(devices => {
-    videoSelect.innerHTML = '';
-    devices.forEach(device => {
-      const opt = document.createElement('option');
-      opt.value = device.deviceId;
-      opt.text = device.label || `Camera ${videoSelect.length + 1}`;
-      videoSelect.appendChild(opt);
-    });
-    
-    // Try to select rear camera
-    const rear = devices.find(d => /back|rear|environment/i.test(d.label));
-    if (rear) selectedDeviceId = rear.deviceId;
-    else if (devices.length) selectedDeviceId = devices[0].deviceId;
-    // If no devices found, notify user
-    if (!devices || devices.length === 0) {
-      showToast('Không tìm thấy camera trên thiết bị này', 'error');
-    }
-  }).catch(err => {
-    const opt = document.createElement('option');
-    opt.text = 'No camera found';
-    videoSelect.appendChild(opt);
-    showToast('Không thể truy cập danh sách camera', 'error');
-  });
+  // No camera selection UI: default to using the device's back/environment camera.
+  // Keep selectedDeviceId null so startScanner requests `facingMode: environment`.
+  selectedDeviceId = null;
+  return Promise.resolve();
 }
 
-// Start scanner
-async function startScanner() {
-  if (!selectedDeviceId) {
-    alert('Không tìm thấy camera');
-    return null;
-  }
-  
+// Preprocess canvas: grayscale + contrast stretch
+function preprocessCanvas(ctx, w, h) {
   try {
-    const controls = await codeReader.decodeFromVideoDevice(selectedDeviceId, video, (result, err) => {
-      if (result) {
-          const code = result.getText();
-          if (mode === 'price') {
-            showProductForBarcode(code);
+    const imgd = ctx.getImageData(0, 0, w, h);
+    const data = imgd.data;
+    let min = 255, max = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      const g = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
+      data[i] = data[i + 1] = data[i + 2] = g;
+      if (g < min) min = g;
+      if (g > max) max = g;
+    }
+    const range = Math.max(1, max - min);
+    for (let i = 0; i < data.length; i += 4) {
+      let v = data[i];
+      v = Math.round((v - min) * 255 / range);
+      data[i] = data[i + 1] = data[i + 2] = v;
+    }
+    ctx.putImageData(imgd, 0, 0);
+  } catch (e) {
+    // ignore
+  }
+}
+
+function getBarcodeDetector() {
+  if (typeof BarcodeDetector === 'undefined') return null;
+  try {
+    if (!barcodeDetector) barcodeDetector = new BarcodeDetector({ formats: ['ean_13','ean_8','upc_e','upc_a','code_128','code_39','qr_code'] });
+    return barcodeDetector;
+  } catch (e) { return null; }
+}
+
+async function detectWithBarcodeDetector(source) {
+  const detector = getBarcodeDetector();
+  if (!detector) return null;
+  try {
+    // Debug: log that BarcodeDetector is being used
+    // Only log when a result is found to avoid flooding the console
+    const result = await detector.detect(source);
+    if (result && result.length) {
+      return result[0].rawValue || (result[0].raw && result[0].raw.value) || null;
+    }
+    return null;
+  } catch (e) { console.warn('detectWithBarcodeDetector: error', e); return null; }
+}
+
+// Start scanner - custom loop using canvas preprocessing, native BarcodeDetector first, then ZXing fallback
+async function startScanner() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('no_media');
+  let stream;
+  const baseVideoConstraints = { width: { ideal: 1280 }, height: { ideal: 720 } };
+  try {
+    if (selectedDeviceId) {
+      stream = await navigator.mediaDevices.getUserMedia({ video: Object.assign({ deviceId: { exact: selectedDeviceId } }, baseVideoConstraints) });
+    } else {
+      try { stream = await navigator.mediaDevices.getUserMedia({ video: Object.assign({ facingMode: { exact: 'environment' } }, baseVideoConstraints) }); }
+      catch (e) { stream = await navigator.mediaDevices.getUserMedia({ video: Object.assign({ facingMode: { ideal: 'environment' } }, baseVideoConstraints) }); }
+    }
+  } catch (err) {
+    throw err;
+  }
+
+  currentStream = stream;
+  video.srcObject = stream;
+  await video.play();
+
+  const canvas = document.getElementById('canvas') || document.createElement('canvas');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  let stopped = false;
+
+  async function loop() {
+    if (stopped) return;
+    try {
+      const w = video.videoWidth || 1280;
+      const h = video.videoHeight || 720;
+      canvas.width = w; canvas.height = h;
+      ctx.drawImage(video, 0, 0, w, h);
+
+      // try native detector first
+      const nativeResult = await detectWithBarcodeDetector(canvas);
+      if (nativeResult) {
+        const now = Date.now();
+        if (!(lastDetected.code === nativeResult && (now - lastDetected.time) < 800)) {
+          lastDetected.code = nativeResult; lastDetected.time = now;
+          handleDetected(nativeResult);
+        }
+      }
+
+      // preprocess and try ZXing
+      preprocessCanvas(ctx, w, h);
+      try {
+        if (codeReader) {
+          // Throttle ZXing attempts to reduce CPU and error spam
+          const nowAttempt = Date.now();
+          if (nowAttempt - lastZxingAttempt < 600) {
+            // skip this ZXing decode for throttling
           } else {
-            addToCartByBarcode(code);
+            lastZxingAttempt = nowAttempt;
+          // ZXing expects an HTMLImageElement (with .complete). Canvas doesn't have that property,
+          // so convert the canvas to an image first to avoid "reading 'complete'" errors.
+          try {
+            const img = new Image();
+            img.src = canvas.toDataURL('image/png');
+            await new Promise((res, rej) => { img.onload = res; img.onerror = rej; });
+            // Prefer decodeFromImageElement if available, fallback to decodeFromImage
+            let zres = null;
+            if (typeof codeReader.decodeFromImageElement === 'function') {
+              zres = await codeReader.decodeFromImageElement(img);
+            } else if (typeof codeReader.decodeFromImage === 'function') {
+              zres = await codeReader.decodeFromImage(img);
+            } else if (typeof codeReader.decode === 'function') {
+              // some builds expose a generic decode API
+              zres = await codeReader.decode(img);
+            }
+            
+            if (zres && (zres.text || zres.result)) {
+              const text = zres.text || zres.result || (zres.rawValue || null) || null;
+              if (text) {
+                const now = Date.now();
+                if (!(lastDetected.code === text && (now - lastDetected.time) < 800)) {
+                  lastDetected.code = text; lastDetected.time = now;
+                  handleDetected(text);
+                }
+              }
+            }
+            } catch (innerErr) {
+              // image conversion or decode failed for this frame — continue loop
+              const msg = innerErr && (innerErr.message || innerErr.toString()) || '';
+              // Suppress frequent expected 'No MultiFormat Readers' errors; log only occasionally
+              if (/No MultiFormat/.test(msg) || /Not Found/.test(msg)) {
+                if (Date.now() - zxingErrorLastLog > 5000) {
+                  console.debug('startScanner.loop: suppressed zxing decode error:', msg);
+                  zxingErrorLastLog = Date.now();
+                }
+              } else {
+                console.warn('startScanner.loop: zxing decode inner error', innerErr);
+              }
+            }
           }
         }
-    });
-    
-    currentStream = video.srcObject;
-    
-    return () => {
-      try {
-        if (controls && typeof controls.stop === 'function') {
-          controls.stop();
-        }
-      } catch (stopErr) {
-        console.warn('Error stopping controls:', stopErr);
-      }
-      if (currentStream) {
-        try {
-          currentStream.getTracks().forEach(t => t.stop());
-        } catch (trkErr) {
-          console.warn('Error stopping stream tracks:', trkErr);
-        }
-        currentStream = null;
-      }
-    };
-  } catch (e) {
-    throw e;
+      } catch (e) { console.warn('startScanner.loop: zxing decode error', e); }
+    } catch (e) { /* loop error */ }
+    setTimeout(loop, 350);
   }
+  loop();
+
+  return () => { stopped = true; try { stream.getTracks().forEach(t => t.stop()); } catch (e) {} currentStream = null; scanning = false; scanningStopper = null; };
+}
+
+// Called when a barcode is detected by either native detector or ZXing
+function handleDetected(code) {
+  if (!code) return;
+  // Debounce/quick guard already handled by loop via lastDetected
+  const doAction = async () => {
+    try {
+      // Fill manual input so user can see the scanned code
+      try {
+        if (manualBarcodeInput) {
+          manualBarcodeInput.value = code;
+          manualBarcodeInput.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+      } catch (e) { console.warn('handleDetected: failed to populate manual input', e); }
+      if (Object.keys(products).length === 0) {
+        await loadProducts();
+        
+      }
+      if (mode === 'cart') {
+        addToCartByBarcode(code);
+      } else {
+        showProductForBarcode(code);
+      }
+    } catch (e) {
+      console.error('handleDetected: error', e);
+    }
+  };
+  doAction();
 }
 
 // Show product for price check mode
@@ -395,6 +538,35 @@ function showProductForBarcode(code) {
     productPrice.textContent = formatPrice(p.price) + ' ₫';
     productBox.classList.add('show');
     showToast('Đã tìm thấy sản phẩm', 'success');
+    // If in price lookup mode, stop the scanner so user can inspect the result
+    try {
+      if (mode === 'price') {
+        
+        // Prefer using the existing stop handler to keep UI state consistent
+        try {
+          if (stopBtn && typeof stopBtn.click === 'function') stopBtn.click();
+        } catch (e) {
+          console.warn('showProductForBarcode: stopBtn.click() failed', e);
+        }
+
+        // Additional cleanup to ensure camera is stopped
+        try {
+          if (typeof scanningStopper === 'function') {
+            scanningStopper();
+          }
+        } catch (e) { /* ignore */ }
+
+        try { if (codeReader && typeof codeReader.reset === 'function') codeReader.reset(); } catch (e) {}
+        try { if (currentStream) { currentStream.getTracks().forEach(t => t.stop()); currentStream = null; } } catch (e) {}
+        try { if (video && video.srcObject) video.srcObject = null; } catch (e) {}
+
+        scanning = false;
+        scanningStopper = null;
+        if (startBtn) startBtn.disabled = false;
+        if (stopBtn) stopBtn.disabled = true;
+        if (placeholder) placeholder.classList.remove('hidden');
+      }
+    } catch (e) { console.warn('Error stopping scanner after product found', e); }
   } else {
     productBox.classList.remove('show');
     if (notFoundBox) notFoundBox.classList.add('show');
@@ -526,9 +698,9 @@ function getCartTotal() {
 }
 
 // Event Listeners
-videoSelect.addEventListener('change', () => { selectedDeviceId = videoSelect.value; });
+// No video select on main UI; selection disabled intentionally.
 
-startBtn.addEventListener('click', async () => {
+if (startBtn) startBtn.addEventListener('click', async () => {
   if (scanning) return;
   scanning = true;
   // scanning started
@@ -547,16 +719,16 @@ startBtn.addEventListener('click', async () => {
   }
 });
 
-stopBtn.addEventListener('click', () => {
+if (stopBtn) stopBtn.addEventListener('click', () => {
   if (typeof scanningStopper === 'function') scanningStopper();
   scanning = false;
   // scanning stopped
-  startBtn.disabled = false;
-  stopBtn.disabled = true;
+  if (startBtn) startBtn.disabled = false;
+  if (stopBtn) stopBtn.disabled = true;
   if (placeholder) placeholder.classList.remove('hidden');
 });
 
-modePrice.addEventListener('change', () => {
+if (modePrice) modePrice.addEventListener('change', () => {
   if (modePrice.checked) {
     mode = 'price';
     // keep cart visible
@@ -564,8 +736,7 @@ modePrice.addEventListener('change', () => {
     if (notFoundBox) notFoundBox.classList.remove('show');
   }
 });
-
-modeCart.addEventListener('change', () => {
+if (modeCart) modeCart.addEventListener('change', () => {
   if (modeCart.checked) {
     mode = 'cart';
     if (cartArea) cartArea.classList.add('show');
@@ -574,8 +745,9 @@ modeCart.addEventListener('change', () => {
   }
 });
 
-clearCartBtn.addEventListener('click', () => {
-  if (confirm('Xóa toàn bộ giỏ hàng?')) {
+if (clearCartBtn) clearCartBtn.addEventListener('click', async () => {
+  const ok = await showConfirm('Xóa toàn bộ giỏ hàng?', 'Xóa giỏ hàng');
+  if (ok) {
     cart = {};
     renderCart();
   }
@@ -654,6 +826,39 @@ if (paymentCloseBtn) {
   });
 }
 
+// Generic confirm modal helper (replaces native confirm())
+const confirmModal = document.getElementById('confirmModal');
+const confirmTitle = document.getElementById('confirmTitle');
+const confirmMessage = document.getElementById('confirmMessage');
+const confirmCancel = document.getElementById('confirmCancel');
+const confirmOk = document.getElementById('confirmOk');
+
+function showConfirm(message, title = 'Xác nhận') {
+  return new Promise((resolve) => {
+    if (!confirmModal) {
+      // fallback to native confirm if modal not present
+      try { resolve(window.confirm(message)); } catch (e) { resolve(false); }
+      return;
+    }
+    if (confirmTitle) confirmTitle.textContent = title;
+    if (confirmMessage) confirmMessage.textContent = message;
+    confirmModal.classList.add('show');
+
+    function cleanup(result) {
+      confirmModal.classList.remove('show');
+      confirmOk.removeEventListener('click', onOk);
+      confirmCancel.removeEventListener('click', onCancel);
+      resolve(result);
+    }
+
+    function onOk() { cleanup(true); }
+    function onCancel() { cleanup(false); }
+
+    confirmOk.addEventListener('click', onOk);
+    confirmCancel.addEventListener('click', onCancel);
+  });
+}
+
 // Render products if data is available, otherwise show loading
 if (Object.keys(products).length > 0) {
   renderProductList();
@@ -681,8 +886,12 @@ function renderProductList() {
 
   const browseCategoryFilter = document.getElementById('browseCategoryFilter');
   const browsePriceFilter = document.getElementById('browsePriceFilter');
+  const browseNameFilter = document.getElementById('browseNameFilter');
   const categoryId = browseCategoryFilter ? browseCategoryFilter.value : '';
   const priceRange = browsePriceFilter ? browsePriceFilter.value : '';
+  const nameQuery = browseNameFilter ? browseNameFilter.value.trim().toLowerCase() : '';
+  // Debug info to help trace search behavior
+  try { console.debug('[browse] renderProductList', { nameQuery, productsCount: Object.keys(products).length }); } catch (e) {}
 
   let filteredProducts = Object.values(products);
 
@@ -705,6 +914,25 @@ function renderProductList() {
         }
     });
   }
+
+  // Filter by name (partial match, case insensitive, multiple words)
+  if (nameQuery) {
+    const searchWords = nameQuery.split(/\s+/).filter(word => word.length > 0);
+    filteredProducts = filteredProducts.filter(p => {
+      const b = (p.barcode || '').toLowerCase();
+      const n = (p.name || '').toLowerCase();
+      const c = (p.category_type || '').toLowerCase();
+      return searchWords.some(word => 
+        b.includes(word) || n.includes(word) || c.includes(word)
+      );
+    });
+  }
+
+  // Update on-screen debug with match count (if present)
+  try {
+    const dbg = document.getElementById('browseDebug');
+    if (dbg) dbg.textContent = `Query: "${nameQuery}" — matches: ${filteredProducts.length}`;
+  } catch (e) {}
 
   grid.innerHTML = '';
 
@@ -864,6 +1092,7 @@ function setupBrowseFilters() {
   // Browse filters
   const browseCategoryFilter = document.getElementById('browseCategoryFilter');
   const browsePriceFilter = document.getElementById('browsePriceFilter');
+  const browseNameFilter = document.getElementById('browseNameFilter');
 
   // Event listeners for browse filters
   if (browseCategoryFilter) {
@@ -880,14 +1109,25 @@ function setupBrowseFilters() {
     });
   }
 
+  if (browseNameFilter) {
+    // Event listeners added globally
+  }
+
+  const searchBtn = document.getElementById('searchBtn');
+  if (searchBtn) {
+    // Event listener added globally
+  }
+
   // Refresh button: reset filters and reload products
   const refreshProductsBtn = document.getElementById('refreshProducts');
   if (refreshProductsBtn) {
     refreshProductsBtn.addEventListener('click', () => {
       const cf = document.getElementById('browseCategoryFilter');
       const pf = document.getElementById('browsePriceFilter');
+      const nf = document.getElementById('browseNameFilter');
       if (cf) cf.value = '';
       if (pf) pf.value = '';
+      if (nf) nf.value = '';
       loadProducts();
       loadCategories();
       renderProductList();
@@ -905,3 +1145,46 @@ const browsePriceEl = document.getElementById('browsePriceFilter');
 if (browsePriceEl) {
   browsePriceEl.addEventListener('change', () => { browsePage = 1; renderProductList(); });
 }
+
+const browseNameEl = document.getElementById('browseNameFilter');
+let _browseNamePollInterval = null;
+if (browseNameEl) {
+  // Standard handlers
+  browseNameEl.addEventListener('input', () => { browsePage = 1; renderProductList(); });
+  browseNameEl.addEventListener('change', () => { browsePage = 1; renderProductList(); });
+  browseNameEl.addEventListener('keyup', (e) => { if (e.key === 'Enter') { browsePage = 1; renderProductList(); } });
+  // Handle composition events (IME) which may delay input events on mobile
+  browseNameEl.addEventListener('compositionend', () => { browsePage = 1; renderProductList(); });
+
+  // Polling fallback for browsers/devices that don't fire input reliably during typing
+  try {
+    let lastVal = browseNameEl.value || '';
+    _browseNamePollInterval = setInterval(() => {
+      const v = browseNameEl.value || '';
+      if (v !== lastVal) {
+        lastVal = v;
+        browsePage = 1;
+        renderProductList();
+      }
+    }, 250);
+  } catch (e) {
+    console.warn('browseName polling setup failed', e);
+  }
+}
+
+const searchBtn = document.getElementById('searchBtn');
+if (searchBtn) {
+  searchBtn.addEventListener('click', (e) => { e.preventDefault(); browsePage = 1; renderProductList(); });
+}
+
+// Clean up polling interval on unload/pagehide to avoid leaks
+function _clearBrowseNamePoll() {
+  try {
+    if (_browseNamePollInterval) {
+      clearInterval(_browseNamePollInterval);
+      _browseNamePollInterval = null;
+    }
+  } catch (e) {}
+}
+window.addEventListener('beforeunload', _clearBrowseNamePoll);
+window.addEventListener('pagehide', _clearBrowseNamePoll);
