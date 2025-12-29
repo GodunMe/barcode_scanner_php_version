@@ -190,7 +190,8 @@ function populateCategoryFilter() {
 
 function loadBrowseProducts() {
   // Populate browse category filter
-  const THRESHOLD = 12;
+  // If THRESHOLD is 0, always use the custom scrollable chooser (helps ensure consistent UI across environments)
+  const THRESHOLD = 0;
   let browseCategoryFilter = document.getElementById('browseCategoryFilter');
   // If many categories, create a custom scrollable chooser
   if (Object.values(categories).length > THRESHOLD) {
@@ -585,11 +586,58 @@ function addToCartByBarcode(code) {
   if (!cart[code]) {
     cart[code] = { product: p, qty: 1 };
     showToast('Đã thêm vào giỏ hàng', 'success');
+    renderCart();
   } else {
-    cart[code].qty++;
-    showToast('Đã tăng số lượng', 'success');
+    // Product already exists in cart — do NOT auto-increment.
+    // Instead, highlight the existing cart item so the user can manually adjust quantity.
+    showToast('Sản phẩm đã có trong giỏ', 'warning');
+    highlightCartItem(code);
   }
-  renderCart();
+}
+
+// Highlight (blink) a cart item by barcode code
+function highlightCartItem(code) {
+  if (!cartItemsContainer) return;
+  try {
+    // Ensure cart area is visible so user can see the highlight
+    try { if (cartArea && !cartArea.classList.contains('show')) cartArea.classList.add('show'); } catch (e) {}
+
+    const findEl = () => {
+      let e = cartItemsContainer.querySelector('.cart-item[data-code="' + code + '"]');
+      if (!e) e = cartItemsContainer.querySelector('.cartitem[data-code="' + code + '"]');
+      return e;
+    };
+
+    let el = findEl();
+    if (!el) {
+      // If the item DOM is not present (e.g., UI not rendered), re-render and try shortly after.
+      try { renderCart(); } catch (e) {}
+      setTimeout(() => {
+        const el2 = findEl();
+        if (!el2) return;
+        doBlink(el2);
+      }, 80);
+      return;
+    }
+    doBlink(el);
+  } catch (e) {
+    console.warn('highlightCartItem failed', e);
+  }
+}
+
+function doBlink(el) {
+  try {
+    // Restart animation if already present
+    el.classList.remove('blink');
+    // Force reflow to allow the animation to restart
+    void el.offsetWidth;
+    el.classList.add('blink');
+    try { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {}
+    // Remove class after animation completes (800ms x2 = 1600ms) + small buffer
+    setTimeout(() => { try { el.classList.remove('blink'); } catch (e) {} }, 1700);
+  } catch (e) {
+    console.warn('doBlink failed', e);
+  }
 }
 
 // Render cart
@@ -963,27 +1011,52 @@ function renderProductList() {
 
   grid.innerHTML = html;
 
-  // Render pagination controls
+  // Render pagination controls (show first/last + sliding window current±2)
   const pager = document.getElementById('productPagination');
   if (pager) {
-    let phtml = '';
-    phtml += `<button data-page="prev">‹</button>`;
-    for (let p = 1; p <= totalPages; p++) {
-      phtml += `<button data-page="${p}" class="${p === browsePage ? 'active' : ''}">${p}</button>`;
-    }
-    phtml += `<button data-page="next">›</button>`;
-    pager.innerHTML = phtml;
+    const controls = document.createElement('div');
+    controls.className = 'pagination-controls';
 
-    // Attach handlers
-    pager.querySelectorAll('button').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        const val = btn.getAttribute('data-page');
-        if (val === 'prev') browsePage = Math.max(1, browsePage - 1);
-        else if (val === 'next') browsePage = Math.min(totalPages, browsePage + 1);
-        else browsePage = parseInt(val, 10) || 1;
-        renderProductList();
-      });
-    });
+    const makeBtn = (label, page, isActive) => {
+      const b = document.createElement('button');
+      if (isActive) b.className = 'active';
+      b.setAttribute('data-page', String(page));
+      b.textContent = label;
+      b.addEventListener('click', () => { browsePage = page; renderProductList(); });
+      return b;
+    };
+
+    // prev
+    const prev = document.createElement('button'); prev.textContent = '‹'; prev.addEventListener('click', () => { browsePage = Math.max(1, browsePage - 1); renderProductList(); }); controls.appendChild(prev);
+
+    if (totalPages <= 7) {
+      for (let p = 1; p <= totalPages; p++) controls.appendChild(makeBtn(String(p), p, p === browsePage));
+    } else {
+      // first
+      controls.appendChild(makeBtn('1', 1, browsePage === 1));
+
+      const left = Math.max(2, browsePage - 2);
+      const right = Math.min(totalPages - 1, browsePage + 2);
+
+      if (left > 2) {
+        const span = document.createElement('span'); span.textContent = '…'; span.style.padding = '6px 8px'; controls.appendChild(span);
+      }
+
+      for (let p = left; p <= right; p++) controls.appendChild(makeBtn(String(p), p, p === browsePage));
+
+      if (right < totalPages - 1) {
+        const span2 = document.createElement('span'); span2.textContent = '…'; span2.style.padding = '6px 8px'; controls.appendChild(span2);
+      }
+
+      // last
+      controls.appendChild(makeBtn(String(totalPages), totalPages, browsePage === totalPages));
+    }
+
+    // next
+    const next = document.createElement('button'); next.textContent = '›'; next.addEventListener('click', () => { browsePage = Math.min(totalPages, browsePage + 1); renderProductList(); }); controls.appendChild(next);
+
+    pager.innerHTML = '';
+    pager.appendChild(controls);
   }
 
   // Attach add-to-cart handlers

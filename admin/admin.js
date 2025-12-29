@@ -44,10 +44,34 @@ async function getCSRFToken() {
 // Load products
 async function loadProducts() {
   try {
-    const r = await fetch(API.products);
-    const data = await r.json();
+    const r = await fetch(API.products, { credentials: 'include' });
+    let data;
+    // Try parse JSON safely
+    try {
+      data = await r.json();
+    } catch (e) {
+      const txt = await r.text().catch(() => '');
+      console.error('Admin: products response not JSON', r.status, txt);
+      _productsCache = [];
+      showToast('Không thể tải danh sách sản phẩm (invalid response)', 4000, 'error');
+      return;
+    }
+
+    if (!r.ok) {
+      console.error('Admin: products API error', r.status, data);
+      _productsCache = [];
+      const msg = (data && data.error) ? data.error : 'Lỗi khi tải sản phẩm';
+      showToast(msg, 4000, 'error');
+      return;
+    }
+
     // Admin: products loaded
-    _productsCache = data;
+    if (!Array.isArray(data)) {
+      console.warn('Admin: unexpected products payload, expected array', data);
+      _productsCache = [];
+    } else {
+      _productsCache = data;
+    }
     renderProducts();
   } catch (error) {
     console.error('Admin: Error loading products:', error);
@@ -180,35 +204,60 @@ function renderPagination(total, totalPages) {
   
   const controls = document.createElement('div');
   controls.style.cssText = 'display:flex;gap:6px;margin-left:12px;align-items:center';
-  
-  const prev = document.createElement('button');
-  prev.className = 'btn ghost';
-  prev.textContent = '‹ Trước';
-  prev.disabled = _productsPage <= 1;
-  prev.onclick = () => { _productsPage--; renderProducts(); };
-  controls.appendChild(prev);
-  
-  // Page numbers
-  const maxPages = 5;
-  let startPage = Math.max(1, _productsPage - 2);
-  let endPage = Math.min(totalPages, startPage + maxPages - 1);
-  if (endPage - startPage < maxPages - 1) startPage = Math.max(1, endPage - maxPages + 1);
-  
-  for (let i = startPage; i <= endPage; i++) {
-    const btn = document.createElement('button');
-    btn.className = i === _productsPage ? 'btn' : 'btn ghost';
-    btn.textContent = i;
-    btn.onclick = () => { _productsPage = i; renderProducts(); };
-    controls.appendChild(btn);
+
+  // Page numbers: always show first, current±1, and last (no Prev/Next buttons)
+  if (totalPages <= 5) {
+    // small number: show all pages
+    for (let i = 1; i <= totalPages; i++) {
+      const btn = document.createElement('button');
+      btn.className = i === _productsPage ? 'btn current' : 'btn ghost';
+      if (i === _productsPage) btn.setAttribute('aria-current', 'page');
+      else btn.removeAttribute('aria-current');
+      btn.textContent = i;
+      btn.onclick = () => { _productsPage = i; renderProducts(); };
+      controls.appendChild(btn);
+    }
+  } else {
+    const left = Math.max(2, _productsPage - 1);
+    const right = Math.min(totalPages - 1, _productsPage + 1);
+
+    // first page
+    const firstBtn = document.createElement('button');
+    firstBtn.className = 1 === _productsPage ? 'btn current' : 'btn ghost';
+    if (1 === _productsPage) firstBtn.setAttribute('aria-current', 'page');
+    else firstBtn.removeAttribute('aria-current');
+    firstBtn.textContent = '1';
+    firstBtn.onclick = () => { _productsPage = 1; renderProducts(); };
+    controls.appendChild(firstBtn);
+
+    if (left > 2) {
+      const ell = document.createElement('span'); ell.textContent = '…'; ell.style.padding = '6px 8px'; ell.style.color = '#666'; controls.appendChild(ell);
+    }
+
+    for (let i = left; i <= right; i++) {
+      const btn = document.createElement('button');
+      btn.className = i === _productsPage ? 'btn current' : 'btn ghost';
+      if (i === _productsPage) btn.setAttribute('aria-current', 'page');
+      else btn.removeAttribute('aria-current');
+      btn.textContent = i;
+      btn.onclick = () => { _productsPage = i; renderProducts(); };
+      controls.appendChild(btn);
+    }
+
+    if (right < totalPages - 1) {
+      const ell2 = document.createElement('span'); ell2.textContent = '…'; ell2.style.padding = '6px 8px'; ell2.style.color = '#666'; controls.appendChild(ell2);
+    }
+
+    // last page
+    const lastBtn = document.createElement('button');
+    lastBtn.className = totalPages === _productsPage ? 'btn current' : 'btn ghost';
+    if (totalPages === _productsPage) lastBtn.setAttribute('aria-current', 'page');
+    else lastBtn.removeAttribute('aria-current');
+    lastBtn.textContent = String(totalPages);
+    lastBtn.onclick = () => { _productsPage = totalPages; renderProducts(); };
+    controls.appendChild(lastBtn);
   }
-  
-  const next = document.createElement('button');
-  next.className = 'btn ghost';
-  next.textContent = 'Sau ›';
-  next.disabled = _productsPage >= totalPages;
-  next.onclick = () => { _productsPage++; renderProducts(); };
-  controls.appendChild(next);
-  
+
   pager.appendChild(controls);
 }
 
@@ -263,6 +312,8 @@ function resetForm() {
   _capturedImageData = null;
   
   ['addBarcode', 'addName', 'addCategory', 'addPrice', 'addImage'].forEach(clearFieldError);
+  // Ensure custom category UI reflects reset state
+  try { updateCategoryDropdownUI(); closeCategoryDropdown(); } catch (e) {}
 }
 
 // Show image preview
@@ -529,9 +580,11 @@ document.getElementById('addForm').addEventListener('submit', async (e) => {
   const token = await getCSRFToken();
   const payload = { barcode, name, image };
   if (price) payload.price = price;
-  if (categoryId) payload.category_id = categoryId;
+  // Always include category_id (null when empty) so backend receives the field consistently
+  payload.category_id = (typeof categoryId !== 'undefined' && categoryId !== '') ? categoryId : null;
   
-  // submit payload logged
+  // Log payload to console for debugging
+  // (debug logs removed)
   
   try {
     let r;
@@ -554,6 +607,7 @@ document.getElementById('addForm').addEventListener('submit', async (e) => {
     }
     
     const j = await r.json().catch(() => ({}));
+    // (debug logs removed)
     
     if (r.ok) {
       _productsPage = 1;
@@ -618,10 +672,12 @@ document.getElementById('productsTable').addEventListener('click', async (e) => 
     // Store original image path for submission
     document.getElementById('addImage').dataset.originalImage = p.image || '';
     
-    // Set category after ensuring dropdown is populated
+    // Set category after ensuring dropdown is populated and scroll it into view
     setTimeout(() => {
-      document.getElementById('addCategory').value = p.category_id || '';
-    }, 100);
+        document.getElementById('addCategory').value = p.category_id || '';
+        try { updateCategoryDropdownUI(); } catch (e) {}
+        ensureCategorySelectVisible();
+    }, 120);
     
     document.getElementById('formTitle').textContent = 'Sửa sản phẩm';
     document.getElementById('submitBtn').textContent = 'Lưu';
@@ -633,6 +689,8 @@ document.getElementById('productsTable').addEventListener('click', async (e) => 
     document.getElementById('toggleAddBtn').textContent = 'Đóng';
     
     setTimeout(() => document.getElementById('addBarcode').focus(), 200);
+    // Ensure category dropdown shows selected option if list is long
+    setTimeout(() => ensureCategorySelectVisible(), 260);
   }
 });
 
@@ -674,10 +732,12 @@ document.getElementById('mobileProducts').addEventListener('click', async (e) =>
     // Store original image path for submission
     document.getElementById('addImage').dataset.originalImage = p.image || '';
     
-    // Set category after ensuring dropdown is populated
+    // Set category after ensuring dropdown is populated and scroll it into view
     setTimeout(() => {
-      document.getElementById('addCategory').value = p.category_id || '';
-    }, 100);
+        document.getElementById('addCategory').value = p.category_id || '';
+        try { updateCategoryDropdownUI(); } catch (e) {}
+        ensureCategorySelectVisible();
+    }, 120);
     
     document.getElementById('formTitle').textContent = 'Sửa sản phẩm';
     document.getElementById('submitBtn').textContent = 'Lưu';
@@ -734,7 +794,6 @@ document.getElementById('toggleAddBtn').addEventListener('click', () => {
     resetForm();
     addCard.classList.add('open');
     document.getElementById('toggleAddBtn').textContent = 'Đóng';
-    setTimeout(() => document.getElementById('addBarcode').focus(), 200);
   }
 });
 
@@ -750,7 +809,6 @@ document.getElementById('toggleCategoriesBtn').addEventListener('click', () => {
     closeAllSections(); // Close other sections first
     categoriesCard.classList.add('open');
     document.getElementById('toggleCategoriesBtn').textContent = 'Đóng';
-    setTimeout(() => document.getElementById('categoryName').focus(), 200);
   }
 });
 
@@ -1074,6 +1132,127 @@ function populateCategoryDropdown() {
   _categoriesCache.forEach(cat => {
     select.innerHTML += `<option value="${cat.id}">${cat.type}</option>`;
   });
+  // Create or update custom dropdown UI for categories
+  try {
+    if (!document.getElementById('categoryDropdownWrap')) buildCategoryDropdownUI();
+    updateCategoryDropdownUI();
+  } catch (e) { /* ignore UI build errors */ }
+}
+
+// Ensure the selected category option is visible inside the dropdown
+function ensureCategorySelectVisible() {
+  const select = document.getElementById('addCategory');
+  if (!select) return;
+  try {
+    // Try to scroll the actual option into view (works in many browsers)
+    const opt = select.querySelector('option:checked');
+    if (opt && typeof opt.scrollIntoView === 'function') {
+      opt.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      return;
+    }
+    // Fallback: focus the select so the browser opens the dropdown on some platforms
+    select.focus();
+  } catch (e) { /* ignore */ }
+}
+
+// Build a custom, scrollable category dropdown UI (keeps original <select> for forms)
+function buildCategoryDropdownUI() {
+  const select = document.getElementById('addCategory');
+  if (!select) return;
+
+  // Wrap select
+  const wrap = document.createElement('div');
+  wrap.id = 'categoryDropdownWrap';
+  wrap.className = 'custom-select-wrap';
+
+  select.style.display = 'none';
+  select.parentNode.insertBefore(wrap, select);
+  wrap.appendChild(select);
+
+  const display = document.createElement('div');
+  display.className = 'custom-select';
+  display.tabIndex = 0;
+  display.innerHTML = `<div class="label">Chọn loại...</div>
+    <svg class="caret" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>`;
+  wrap.appendChild(display);
+
+  const list = document.createElement('div');
+  list.className = 'custom-select-list';
+  list.style.display = 'none';
+  wrap.appendChild(list);
+
+  // Toggle list
+  display.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    const open = display.classList.toggle('open');
+    list.style.display = open ? 'block' : 'none';
+    if (open) {
+      // scroll active into view
+      const active = list.querySelector('.custom-select-item.active');
+      if (active && typeof active.scrollIntoView === 'function') active.scrollIntoView({ block: 'center' });
+    }
+  });
+
+  // keyboard support: close on Escape
+  display.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { closeCategoryDropdown(); display.blur(); }
+  });
+
+  // clicking outside closes
+  document.addEventListener('click', (e) => {
+    if (!wrap.contains(e.target)) closeCategoryDropdown();
+  });
+}
+
+function closeCategoryDropdown() {
+  const wrap = document.getElementById('categoryDropdownWrap');
+  if (!wrap) return;
+  const display = wrap.querySelector('.custom-select');
+  const list = wrap.querySelector('.custom-select-list');
+  if (display) display.classList.remove('open');
+  if (list) list.style.display = 'none';
+}
+
+// Update the custom dropdown content from _categoriesCache and sync with <select>
+function updateCategoryDropdownUI() {
+  const select = document.getElementById('addCategory');
+  const wrap = document.getElementById('categoryDropdownWrap');
+  if (!select || !wrap) return;
+  const display = wrap.querySelector('.custom-select .label');
+  const list = wrap.querySelector('.custom-select-list');
+  list.innerHTML = '';
+
+  // create items
+  const empty = document.createElement('div');
+  empty.className = 'custom-select-item' + (select.value === '' ? ' active' : '');
+  empty.textContent = 'Chọn loại...';
+  empty.dataset.value = '';
+  list.appendChild(empty);
+
+  empty.addEventListener('click', () => {
+    select.value = '';
+    display.textContent = 'Chọn loại...';
+    closeCategoryDropdown();
+  });
+
+  _categoriesCache.forEach(cat => {
+    const item = document.createElement('div');
+    item.className = 'custom-select-item' + (String(select.value) === String(cat.id) ? ' active' : '');
+    item.textContent = cat.type;
+    item.dataset.value = cat.id;
+    item.addEventListener('click', () => {
+      select.value = cat.id;
+      display.textContent = cat.type;
+      // fire change event
+      try { select.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) {}
+      closeCategoryDropdown();
+    });
+    list.appendChild(item);
+  });
+
+  // Set current label
+  const sel = select.querySelector(`option[value="${select.value}"]`);
+  display.textContent = sel ? sel.textContent : 'Chọn loại...';
 }
 
 // Add category

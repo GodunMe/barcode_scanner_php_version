@@ -316,6 +316,32 @@ tbody tr:hover {
   margin-top: 12px;
 }
 
+/* Individual cart item and highlight animation when an existing item is scanned */
+.cart-item,
+.cartitem {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 8px;
+  border-radius: 8px;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s;
+}
+.cart-item.blink,
+.cartitem.blink {
+  /* subtle rounded highlight: only background + border color changes (no scale or shadow) */
+  animation: cart-blink 800ms linear 0s 2;
+  border-radius: 12px !important;
+  border: 2px solid rgba(255,140,0,0.9) !important;
+  z-index: 5;
+}
+@keyframes cart-blink {
+  0% { background-color: transparent; }
+  25% { background-color: rgba(255,214,10,0.46); }
+  50% { background-color: transparent; }
+  75% { background-color: rgba(255,214,10,0.46); }
+  100% { background-color: transparent; }
+}
+
 .qty-controls {
   display: flex;
   align-items: center;

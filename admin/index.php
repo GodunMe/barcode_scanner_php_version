@@ -409,6 +409,52 @@
       gap: 12px;
     }
 
+    /* Compact pagination buttons and current page highlight */
+    #pagination .page-info {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+    }
+
+    #pagination .page-controls {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    #pagination button {
+      background: #fff;
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 6px 10px;
+      font-size: 13px;
+      border-radius: 12px;
+      min-width: 36px;
+      height: 36px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 6px 18px rgba(15,23,42,0.04);
+      cursor: pointer;
+    }
+
+    #pagination button.ghost {
+      background: #fff;
+      color: var(--text-muted);
+      border-color: var(--border);
+    }
+
+    #pagination button.current {
+      background: var(--primary);
+      color: #fff;
+      border-color: transparent;
+      box-shadow: 0 8px 20px rgba(99,102,241,0.18);
+    }
+
+    #pagination span.ellipsis {
+      color: var(--text-muted);
+      padding: 6px 8px;
+    }
+
     /* Toast */
     .toast-wrap {
       position: fixed;
@@ -636,6 +682,17 @@
     .categories-list::-webkit-scrollbar-track { background: transparent; }
     .categories-list::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.08); border-radius: 8px; }
     .categories-list::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.12); }
+
+    /* Custom category select (scrollable dropdown) */
+    .custom-select-wrap { position: relative; }
+    .custom-select { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border: 2px solid var(--border); border-radius: 12px; background: white; cursor: pointer; }
+    .custom-select .label { flex: 1; color: var(--text); }
+    .custom-select .caret { width: 16px; height: 16px; opacity: 0.7; }
+    .custom-select.open { border-color: var(--primary); box-shadow: 0 6px 18px rgba(99,102,241,0.08); }
+    .custom-select-list { position: absolute; left: 0; right: 0; top: calc(100% + 8px); max-height: 240px; overflow-y: auto; background: white; border: 1px solid var(--border); border-radius: 10px; z-index: 1500; padding: 8px; box-shadow: 0 10px 30px rgba(2,6,23,0.08); }
+    .custom-select-item { padding: 10px 12px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 8px; }
+    .custom-select-item:hover { background: #f8fafc; color: var(--primary); }
+    .custom-select-item.active { background: linear-gradient(90deg,#eef2ff,#eef6ff); color: var(--primary); font-weight:600; }
 
     /* Mini Camera */
     .mini-camera {

@@ -7,7 +7,7 @@
 define('DB_HOST', 'localhost');
 define('DB_NAME', 'barcode_scanner');
 define('DB_USER', 'root');
-define('DB_PASS', ''); // Laragon default is empty password
+define('DB_PASS', ''); // Default Laragon MySQL root user has no password
 
 class Database {
     private static $instance = null;

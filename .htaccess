@@ -1,89 +1,56 @@
 #############################################
-# Root-level security rules (combined)
-# - Protect static assets (JS/CSS) from direct leaks
-# - Deny direct HTTP access to sensitive PHP files under config/includes/models
-# - Block .sql/.env and dotfiles
+# Safer .htaccess: protect sensitive files & folders
+# - Allow static assets (js/css) to be served publicly
+# - Block direct access to PHP files inside sensitive directories
+# - Deny access to .sql/.env and dotfiles
+# - Keep API/admin rewrite mappings
 #############################################
 
-# 1) Static asset protection: prefer referer checks for normal page loads
-<IfModule mod_authz_core.c>
-  <FilesMatch "\.(js|css|map)$">
-    <RequireAll>
-      Require expr %{HTTP_REFERER} =~ m#/(index\.php|admin/index\.php|admin/?)$#
-    </RequireAll>
-  </FilesMatch>
-</IfModule>
-<IfModule !mod_authz_core.c>
-  <FilesMatch "\.(js|css|map)$">
-    Order Deny,Allow
-    Deny from all
-    SetEnvIfNoCase Referer "\/(index\.php|admin\/index\.php|admin\/?)(?:$|\?)" allowed_ref
-    Allow from env=allowed_ref
-  </FilesMatch>
-</IfModule>
-
-# 2) Deny direct requests to PHP files inside sensitive directories (config/includes/models)
+# Ensure rewrite engine is available for route mappings
 <IfModule mod_rewrite.c>
-  RewriteEngine On
-  # block any direct access to PHP files in these dirs
-  RewriteRule ^(config|includes|models)/.*\.php$ - [F,L,NC]
+        RewriteEngine On
+        RewriteBase /
 
-  # 3) Restrict admin assets unless request comes from same host (page load) or from localhost
-  # allow if Referer contains this host; otherwise block
-  RewriteCond %{REQUEST_URI} ^/admin/(admin\.js|admin\.css)$ [NC]
-  RewriteCond %{REMOTE_ADDR} !^127\.0\.0\.1$
-  RewriteCond %{HTTP_REFERER} !^https?://%{HTTP_HOST} [NC]
-  RewriteRule .* - [F,L]
+        # Block direct access to PHP files under these sensitive directories
+        RewriteRule ^(config|includes|models)/.*\.php$ - [F,L,NC]
 
-  # Block direct address-bar access to specific css files when Referer is not from this host
-  RewriteCond %{REQUEST_URI} ^/css/(admin\.css|style\.css)$ [NC]
-  RewriteCond %{HTTP_REFERER} !^https?://%{HTTP_HOST} [NC]
-  RewriteRule .* - [F,L]
+        # Keep API rewrite mappings
+        RewriteRule ^api/products$ api/products.php [L,QSA]
+        RewriteRule ^api/products/(.*)$ api/products.php/$1 [L,QSA]
+        RewriteRule ^api/auth$ api/auth.php [L,QSA]
+        RewriteRule ^api/auth/(.*)$ api/auth.php/$1 [L,QSA]
+        RewriteRule ^api/uploads$ api/upload.php [L,QSA]
+
+        # Admin route proxies
+        RewriteRule ^admin/login$ api/auth.php/login [L,QSA]
+        RewriteRule ^admin/logout$ api/auth.php/logout [L,QSA]
+        RewriteRule ^admin/status$ api/auth.php/status [L,QSA]
+        RewriteRule ^admin/csrf-token$ api/auth.php/csrf-token [L,QSA]
 </IfModule>
 
-# 4) Deny access to SQL, env and other sensitive file types
+    # Custom friendly error page for forbidden access
+    ErrorDocument 403 /forbidden.html
+
+# Deny access to SQL, env and other sensitive file types
 <FilesMatch "\.(sql|env|env\.dist)$">
-  <IfModule mod_authz_core.c>
-    Require all denied
-  </IfModule>
-  <IfModule !mod_authz_core.c>
-    Deny from all
-  </IfModule>
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Deny from all
+    </IfModule>
 </FilesMatch>
 
-# 5) Protect dotfiles (e.g., .env, .git) — deny all
+# Protect dotfiles (e.g., .env, .git) — deny all
 <FilesMatch "^\.">
-  <IfModule mod_authz_core.c>
-    Require all denied
-  </IfModule>
-  <IfModule !mod_authz_core.c>
-    Order allow,deny
-    Deny from all
-  </IfModule>
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
 </FilesMatch>
-
-# Existing rewrite rules (API and admin routes)
-<IfModule mod_rewrite.c>
-    RewriteEngine On
-    RewriteBase /
-
-    # Redirect /api/products to /api/products.php
-    RewriteRule ^api/products$ api/products.php [L,QSA]
-    RewriteRule ^api/products/(.*)$ api/products.php/$1 [L,QSA]
-    
-    # Redirect /api/auth to /api/auth.php
-    RewriteRule ^api/auth$ api/auth.php [L,QSA]
-    RewriteRule ^api/auth/(.*)$ api/auth.php/$1 [L,QSA]
-    
-    # Redirect /api/uploads to /api/upload.php
-    RewriteRule ^api/uploads$ api/upload.php [L,QSA]
-    
-    # Admin routes
-    RewriteRule ^admin/login$ api/auth.php/login [L,QSA]
-    RewriteRule ^admin/logout$ api/auth.php/logout [L,QSA]
-    RewriteRule ^admin/status$ api/auth.php/status [L,QSA]
-    RewriteRule ^admin/csrf-token$ api/auth.php/csrf-token [L,QSA]
-</IfModule>
 
 # Prevent directory listing
 Options -Indexes
@@ -93,7 +60,7 @@ AddDefaultCharset UTF-8
 
 # PHP settings
 <IfModule mod_php.c>
-    php_value upload_max_filesize 10M
-    php_value post_max_size 10M
-    php_value max_execution_time 30
+        php_value upload_max_filesize 10M
+        php_value post_max_size 10M
+        php_value max_execution_time 30
 </IfModule>

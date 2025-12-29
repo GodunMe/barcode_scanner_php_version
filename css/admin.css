@@ -151,8 +151,43 @@
   flex-wrap: wrap;
 }
 
+/* Make pagination compact in admin and visually indicate current page */
 #pagination button {
   min-width: 36px;
+}
+
+/* Target pagination buttons specifically to keep global .btn size unchanged */
+#pagination .btn,
+#pagination button {
+  padding: 6px 10px;
+  font-size: 13px;
+  border-radius: 6px;
+  min-width: 34px;
+  height: 34px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#pagination .btn.ghost {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  padding: 6px 10px;
+}
+
+/* Active/current page indicator */
+#pagination .btn.current {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 6px 12px rgba(43,110,246,0.12);
+  border: none;
+}
+
+#pagination span {
+  color: #666;
+  padding: 6px 8px;
 }
 
 /* Preview */

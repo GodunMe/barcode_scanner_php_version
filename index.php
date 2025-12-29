@@ -258,6 +258,8 @@
     .filter-selects > * {
       flex: 0 0 calc(50% - 4px);
       min-width: 0;
+      display: flex;
+      align-items: center;
     }
 
     /* Remove extra top margin for selects inside filter row */
@@ -280,6 +282,10 @@
       gap: 8px;
       box-sizing: border-box;
       height: 48px;
+      position: relative;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
     .custom-select-toggle::after {
       content: '';
@@ -538,6 +544,25 @@
       border: none;
       border-radius: 6px;
       background: #fee2e2;
+    }
+
+    /* Highlight for scanned existing item */
+    .cart-item.blink,
+    .cartitem.blink {
+      /* rounded border and simple background blink (no raise/scale) */
+      animation: cartBlinkInline 800ms linear 0s 2;
+      border-radius: 12px !important;
+      border: 2px solid rgba(255,140,0,0.9) !important;
+      z-index: 5;
+    }
+
+    @keyframes cartBlinkInline {
+      0% { background-color: transparent; }
+      25% { background-color: rgba(255,214,10,0.46); }
+      50% { background-color: transparent; }
+      75% { background-color: rgba(255,214,10,0.46); }
+      100% { background-color: transparent; }
+    }
       color: #dc2626;
       cursor: pointer;
       font-weight: 600;
@@ -1056,5 +1081,6 @@
 
   <script src="https://unpkg.com/@zxing/library@0.18.6/umd/index.min.js"></script>
   <script src="js/app.js"></script>
+
 </body>
 </html>
